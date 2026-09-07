@@ -200,6 +200,33 @@ export class Chain {
 
   broadcast(tx) { return this.call("sendRawTransaction", [tx.toHex()]); }
 
+  /**
+   * Everything this wallet has done to its stake, newest first.
+   *
+   * The type of each action is decoded by the SDK rather than read off the
+   * first byte. Guessing at prefixes works right up until it silently doesn't.
+   */
+  async stakingHistory(address, max = 20) {
+    const txs = await this.call("getTransactionsByAddress", [String(address), max, null]);
+    const out = [];
+    for (const t of txs ?? []) {
+      if (!t.recipientData) continue;
+      let plain;
+      try { plain = Nimiq.StakingContract.dataToPlain(Buffer.from(t.recipientData, "hex")); }
+      catch { continue; }          // not a staking transaction
+      out.push({
+        type: plain.type,
+        hash: t.hash,
+        blockNumber: t.blockNumber,
+        timestamp: t.timestamp,
+        value: String(t.value ?? 0),
+        delegation: plain.delegation ?? null,
+        newActiveBalance: plain.newActiveBalance ?? null,
+      });
+    }
+    return out;
+  }
+
   async lookup(hash) {
     try { return await this.call("getTransactionByHash", [String(hash)]); }
     catch { return null; }

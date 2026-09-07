@@ -125,6 +125,13 @@ const server = http.createServer(async (req, res) => {
       return json(res, 200, await overview(address));
     }
 
+    // Every action, with its hash. A staking app that asks to be trusted and
+    // then shows nothing checkable is asking for the wrong thing.
+    if (req.method === "GET" && url.pathname === "/api/history") {
+      const address = url.searchParams.get("address") || DEMO_ADDRESS;
+      return json(res, 200, { history: await chain.stakingHistory(address, 20) });
+    }
+
     // Broadcast is not settlement, so the page asks here whether a hash has
     // actually landed rather than believing the wallet's reply.
     if (req.method === "GET" && url.pathname.startsWith("/api/tx/")) {

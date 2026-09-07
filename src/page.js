@@ -107,6 +107,11 @@ ${PALETTE}
    display:flex;flex-direction:column;gap:6px}
  .leaving .kicker{font-family:var(--mono);font-size:9.5px;letter-spacing:.12em;
    text-transform:uppercase;color:var(--faint)}
+ /* Deliberately smaller than the hero. Money coming back is a secondary state;
+    what is still working is the number people opened the app for. */
+ .leaving-amt{font-size:19px;font-weight:600;font-variant-numeric:tabular-nums;
+   margin:0;display:flex;align-items:baseline;gap:5px}
+ .leaving-amt .unit{font-size:12px;font-weight:600;color:var(--dim)}
  .track{display:flex;flex-direction:column;margin-top:6px}
  .track-step{display:flex;gap:11px;align-items:flex-start;padding:7px 0}
  .track-step .pip{width:11px;height:11px;border-radius:50%;flex:none;margin-top:4px;
@@ -118,6 +123,17 @@ ${PALETTE}
    line-height:1.35;margin-top:2px}
  .track-step.pending .t{color:var(--faint);font-weight:500}
  .track-rail{width:1.5px;background:var(--rule);margin-left:4.75px;height:8px}
+
+ .history{display:flex;flex-direction:column;gap:0;margin-top:2px}
+ .history .kicker{font-family:var(--mono);font-size:9.5px;letter-spacing:.12em;
+   text-transform:uppercase;color:var(--faint);margin:0 0 4px}
+ .hrow{display:grid;grid-template-columns:1fr auto auto;gap:10px;align-items:baseline;
+   padding:9px 2px;border-bottom:1px solid var(--rule);text-decoration:none;color:inherit}
+ .hrow:last-child{border-bottom:0}
+ .hrow:hover .hwhat{text-decoration:underline;text-decoration-color:var(--faint)}
+ .hwhat{font-size:13px;font-weight:500}
+ .hamt{font-family:var(--mono);font-size:12px;color:var(--dim);font-variant-numeric:tabular-nums}
+ .hwhen{font-family:var(--mono);font-size:10.5px;color:var(--faint);white-space:nowrap}
 
  .msg{border-radius:11px;padding:11px 13px;font-size:13px;line-height:1.45}
  .msg.bad{background:color-mix(in srgb,var(--bad) 12%,transparent);color:var(--bad);border:1px solid var(--bad)}
@@ -208,6 +224,7 @@ async function refresh() {
 function render() {
   main.innerHTML = data.isStaking ? screenWorking() : screenStart();
   wire();
+  loadHistory();
 }
 
 function screenStart() {
@@ -281,6 +298,8 @@ function screenWorking() {
 
     \${data.leaving ? leavingPanel() : ""}
 
+    <div id="history"></div>
+
     <div class="foot">
       \${staked > 0n ? \`<button class="act" id="more" \${spendable > MINIMUM ? "" : "disabled"}>Put more to work</button>\` : ""}
       \${staked > 0n && !data.leaving ? \`<button class="act quiet" id="out">Take it back</button>\` : ""}
@@ -312,7 +331,7 @@ function leavingPanel() {
   return \`
     <div class="leaving">
       <p class="kicker">Coming back to you</p>
-      <p class="hero" style="font-size:34px">\${nim(inactive + retired)}<span class="unit">NIM</span></p>
+      <p class="leaving-amt">\${nim(inactive + retired)}<span class="unit">NIM</span></p>
       <div class="track">
         \${step(1, "done", "You asked for it back", "confirmed")}
         \${step(2, stage === "waiting" ? "now" : "done",
@@ -328,6 +347,49 @@ function leavingPanel() {
       only be withdrawn — it can never go back to work.</div>
       <button class="act" id="retire">Retire \${nim(inactive)} NIM — permanent</button>\` : ""}
     \${stage === "ready" ? \`<button class="act" id="withdraw">Move \${nim(retired)} NIM back to my wallet</button>\` : ""}\`;
+}
+
+/**
+ * What you have done, with a link to the chain for each.
+ *
+ * Loaded after the screen so a slow node never delays the numbers people came
+ * for. This is the trust layer: an app that moves your money and shows you
+ * nothing you can check independently is asking to be taken on faith.
+ */
+const ACTION_NAMES = {
+  "create-staker": "Started earning",
+  "add-stake": "Put more to work",
+  "set-active-stake": "Asked for it back",
+  "retire-stake": "Retired — permanent",
+  "remove-stake": "Moved back to wallet",
+  "update-staker": "Changed who looks after it",
+};
+
+async function loadHistory() {
+  const box = $("history");
+  if (!box) return;
+  try {
+    const { history } = await fetch("/api/history?address=" + encodeURIComponent(address)).then((r) => r.json());
+    if (!history?.length) return;
+    box.innerHTML = \`
+      <div class="history">
+        <p class="kicker">What you've done</p>
+        \${history.slice(0, 5).map((h) => \`
+          <a class="hrow" href="https://nimiq.watch/#\${esc(h.hash)}" target="_blank" rel="noopener">
+            <span class="hwhat">\${ACTION_NAMES[h.type] || h.type}</span>
+            <span class="hamt">\${BigInt(h.value) > 0n ? nim(h.value) + " NIM" : ""}</span>
+            <span class="hwhen">\${when(h.timestamp)}</span>
+          </a>\`).join("")}
+      </div>\`;
+  } catch { /* history is a nicety; never let it break the screen */ }
+}
+
+function when(ts) {
+  const mins = Math.max(0, Math.round((Date.now() - ts) / 60000));
+  if (mins < 60) return mins + "m ago";
+  const h = mins / 60;
+  if (h < 24) return h.toFixed(0) + "h ago";
+  return Math.round(h / 24) + "d ago";
 }
 
 /** A wait in words people use, not a block number. */
