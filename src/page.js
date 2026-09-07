@@ -1,0 +1,378 @@
+/**
+ * The app, as one string.
+ *
+ * No build step, no framework, no external assets beyond one font. It is a
+ * phone screen inside Nimiq Pay, and it has one job: turn "I am holding NIM
+ * doing nothing" into "my NIM is working" in a single tap.
+ *
+ * Words on screen are the ones a person uses, never the ones the protocol uses.
+ * Nobody outside this ecosystem knows what delegating to a validator means, and
+ * nobody should have to.
+ */
+
+const PALETTE = `
+ :root{
+   --paper:#EDEFEA; --surface:#FFFFFF; --panel:#E3E7DF; --rule:#D5DAD0;
+   --ink:#1A1F1B; --dim:#5F6960; --faint:#8A9389;
+   --accent:#A8741A; --accent-soft:#F0E3C8;
+   --grow:#2F6B4F; --grow-soft:#DCEADF;
+   --bad:#9A3B24;
+   --display:"Fraunces",Georgia,serif;
+   --body:"Public Sans",system-ui,-apple-system,"Segoe UI",sans-serif;
+   --mono:"IBM Plex Mono",ui-monospace,Menlo,Consolas,monospace;
+ }
+ @media (prefers-color-scheme:dark){
+   :root:not([data-theme="light"]){
+     --paper:#12150F; --surface:#1B1F19; --panel:#232821; --rule:#2E342B;
+     --ink:#E8EBE2; --dim:#9BA396; --faint:#6E7669;
+     --accent:#E0A93F; --accent-soft:#3A2F16;
+     --grow:#5FC38E; --grow-soft:#1D3327;
+     --bad:#E08163;
+   }
+ }
+ :root[data-theme="dark"]{
+   --paper:#12150F; --surface:#1B1F19; --panel:#232821; --rule:#2E342B;
+   --ink:#E8EBE2; --dim:#9BA396; --faint:#6E7669;
+   --accent:#E0A93F; --accent-soft:#3A2F16;
+   --grow:#5FC38E; --grow-soft:#1D3327;
+   --bad:#E08163;
+ }`;
+
+export function renderApp({ demoAddress, networkId }) {
+  return `<!doctype html><html lang="en"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<meta name="color-scheme" content="light dark">
+<title>Put your NIM to work</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,400&family=Public+Sans:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500&display=swap">
+<style>
+${PALETTE}
+ *{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
+ body{margin:0;background:var(--paper);color:var(--ink);
+   font:16px/1.55 var(--body);overscroll-behavior:none;-webkit-font-smoothing:antialiased}
+ .wrap{max-width:460px;margin:0 auto;min-height:100dvh;display:flex;flex-direction:column;
+   padding:18px 20px calc(24px + env(safe-area-inset-bottom))}
+
+ header{display:flex;align-items:center;gap:9px;margin-bottom:22px}
+ .mark{width:16px;height:16px;border-radius:5px;background:var(--grow);flex:none}
+ .appname{font-family:var(--mono);font-size:10.5px;letter-spacing:.14em;text-transform:uppercase;color:var(--dim)}
+ .mode{margin-left:auto;font-family:var(--mono);font-size:9.5px;letter-spacing:.1em;
+   text-transform:uppercase;padding:3px 9px;border-radius:99px;border:1px solid currentColor;color:var(--faint)}
+ .mode.live{color:var(--grow)}
+
+ main{flex:1;display:flex;flex-direction:column;gap:16px}
+ .kicker{font-size:13.5px;color:var(--dim);margin:0}
+ .hero{font-family:var(--display);font-optical-sizing:auto;font-weight:400;
+   font-size:46px;line-height:1;letter-spacing:-.025em;font-variant-numeric:tabular-nums;
+   margin:0;display:flex;align-items:baseline;gap:6px;overflow-wrap:anywhere}
+ .hero .unit{font-family:var(--body);font-size:15px;font-weight:600;color:var(--dim);letter-spacing:0}
+ .hero.grow{color:var(--grow)}
+ .sub{font-family:var(--mono);font-size:11.5px;color:var(--faint);margin:0}
+
+ .earn{background:var(--grow-soft);border-radius:12px;padding:12px 14px;
+   display:flex;align-items:center;justify-content:space-between;gap:10px}
+ .earn .lbl{font-size:12.5px;color:var(--dim);line-height:1.35}
+ .earn .amt{font-family:var(--mono);font-size:15px;font-weight:500;color:var(--grow);white-space:nowrap}
+
+ .tiles{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+ .tile{background:var(--panel);border-radius:12px;padding:12px 13px;display:flex;flex-direction:column;gap:3px}
+ .tile .k{font-family:var(--mono);font-size:9.5px;letter-spacing:.12em;text-transform:uppercase;color:var(--faint)}
+ .tile .v{font-size:16px;font-weight:600;font-variant-numeric:tabular-nums}
+ .tile .v .m{font-family:var(--mono);font-size:13px;font-weight:400;color:var(--dim)}
+
+ .amount{border:1.5px solid var(--ink);border-radius:12px;padding:12px 14px;
+   display:flex;align-items:baseline;justify-content:space-between;gap:10px}
+ .amount input{border:0;background:transparent;color:var(--ink);width:100%;
+   font:400 30px/1 var(--display);font-variant-numeric:tabular-nums;letter-spacing:-.02em;
+   padding:0;outline:none;-moz-appearance:textfield}
+ .amount input::-webkit-outer-spin-button,.amount input::-webkit-inner-spin-button{-webkit-appearance:none;margin:0}
+ .amount .cur{font-size:12.5px;font-weight:600;color:var(--dim);flex:none}
+ .presets{display:flex;gap:8px}
+ .presets button{flex:1;font:500 12.5px var(--body);padding:8px 4px;border-radius:9px;
+   border:1px solid var(--rule);background:transparent;color:var(--dim);cursor:pointer}
+ .presets button:hover{border-color:var(--ink);color:var(--ink)}
+
+ .keeper{border:1px solid var(--rule);border-radius:12px;padding:11px 13px;display:flex;align-items:center;gap:11px}
+ .keeper .badge{width:30px;height:30px;border-radius:9px;background:var(--accent-soft);color:var(--accent);
+   display:grid;place-items:center;font:500 11px var(--mono);flex:none}
+ .keeper .who{display:block;font-size:13px;font-weight:600;line-height:1.3}
+ .keeper .why{display:block;font-size:11px;color:var(--faint);line-height:1.35;margin-top:2px;font-family:var(--mono)}
+
+ .note{font-size:12.5px;color:var(--dim);line-height:1.5;margin:0}
+ .note code{font-family:var(--mono);font-size:11.5px}
+ a{color:var(--accent)}
+
+ .msg{border-radius:11px;padding:11px 13px;font-size:13px;line-height:1.45}
+ .msg.bad{background:color-mix(in srgb,var(--bad) 12%,transparent);color:var(--bad);border:1px solid var(--bad)}
+ .msg.wait{background:var(--accent-soft);color:var(--accent)}
+
+ .foot{margin-top:auto;padding-top:16px;display:flex;flex-direction:column;gap:9px}
+ button.act{border:0;border-radius:12px;padding:15px;width:100%;
+   font:600 15px var(--body);cursor:pointer;background:var(--ink);color:var(--paper)}
+ button.act:disabled{opacity:.4;cursor:default}
+ button.act.ghost{background:transparent;color:var(--ink);border:1.5px solid var(--rule)}
+ button.act.quiet{background:transparent;color:var(--dim);border:0;font-weight:500;font-size:13.5px;padding:9px}
+ button:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+ .hint{font-family:var(--mono);font-size:9.5px;color:var(--faint);text-align:center;line-height:1.45;margin:0}
+ .hidden{display:none !important}
+ .skeleton{color:var(--faint)}
+ @media (prefers-reduced-motion:reduce){*{transition:none!important;animation:none!important}}
+</style></head><body><div class="wrap">
+
+<header>
+  <span class="mark"></span>
+  <span class="appname">Put to work</span>
+  <span class="mode" id="mode">connecting</span>
+</header>
+
+<main id="main">
+  <p class="kicker skeleton">Reading the chain…</p>
+  <p class="hero skeleton">—</p>
+</main>
+
+<script type="module">
+import { init } from "/sdk.js";
+
+const DEMO_ADDRESS = ${JSON.stringify(demoAddress)};
+const NETWORK_ID = ${networkId};
+const MINIMUM = 10000000n;            // 100 NIM, from the chain's own policy
+const YEARLY = 0.15;                  // ~15%. Shown per week, never as a percentage.
+const LUNA = 100000n;
+
+const $ = (id) => document.getElementById(id);
+const main = $("main");
+
+let provider = null;      // null outside Nimiq Pay — the app is then read-only
+let address = DEMO_ADDRESS;
+let data = null;
+let busy = false;
+
+/* ---- money ----------------------------------------------------------------
+   NIM has five decimal places and amounts are integers of luna throughout.
+   Nothing is ever parsed into a float, and nothing is ever rounded up: money
+   that rounds itself looks like money that might go missing. */
+function nim(luna, places = 2) {
+  const n = BigInt(luna);
+  const whole = n / LUNA;
+  const frac = (n % LUNA).toString().padStart(5, "0").slice(0, places).replace(/0+$/, "");
+  return whole.toLocaleString("en-GB") + (frac ? "." + frac : "");
+}
+const perWeek = (luna) => (Number(BigInt(luna)) / 1e5) * YEARLY / 52;
+const fmtWeek = (luna) => perWeek(luna).toFixed(2);
+const esc = (s) => String(s ?? "").replace(/[<>&"]/g, (c) => ({ "<":"&lt;", ">":"&gt;", "&":"&amp;", '"':"&quot;" }[c]));
+const short = (a) => { const c = String(a).replace(/\\s+/g, ""); return c.slice(0, 6) + "…" + c.slice(-4); };
+
+/* ---- boot ---------------------------------------------------------------- */
+async function boot() {
+  try {
+    provider = await init({ timeout: 2500 });
+    const accounts = await provider.listAccounts();
+    if (Array.isArray(accounts) && accounts.length) address = accounts[0];
+  } catch {
+    provider = null;   // not inside Nimiq Pay: show the real staked wallet instead
+  }
+  $("mode").textContent = provider ? "Live" : "Preview";
+  $("mode").className = "mode" + (provider ? " live" : "");
+  await refresh();
+}
+
+async function refresh() {
+  try {
+    const r = await fetch("/api/overview?address=" + encodeURIComponent(address));
+    data = await r.json();
+    if (!r.ok) throw new Error(data.error || "could not read the chain");
+    render();
+  } catch (e) {
+    main.innerHTML = '<div class="msg bad">Could not read the chain. ' + esc(e.message) + "</div>";
+  }
+}
+
+/* ---- screens ------------------------------------------------------------- */
+function render() {
+  main.innerHTML = data.isStaking ? screenWorking() : screenStart();
+  wire();
+}
+
+function screenStart() {
+  const spendable = BigInt(data.spendable);
+  const enough = spendable > MINIMUM;
+  const v = data.suggested;
+
+  return \`
+    <p class="kicker">You are holding</p>
+    <p class="hero">\${nim(spendable)}<span class="unit">NIM</span></p>
+    <p class="sub">earning nothing</p>
+
+    \${enough ? \`
+      <div class="earn">
+        <span class="lbl">Put it all to work and it earns about</span>
+        <span class="amt">\${fmtWeek(spendable)} / week</span>
+      </div>
+
+      <div class="amount">
+        <input id="amt" type="number" inputmode="decimal" value="\${Math.floor(Number(spendable) / 1e5 * 0.5)}" min="100" step="1" aria-label="Amount in NIM">
+        <span class="cur">NIM</span>
+      </div>
+      <div class="presets">
+        <button data-set="100">100</button>
+        <button data-set="half">Half</button>
+        <button data-set="max">Most of it</button>
+      </div>
+      <p class="note" id="leftover"></p>
+
+      \${v ? \`<div class="keeper">
+        <span class="badge">\${esc(short(v.address).slice(2, 4).toUpperCase())}</span>
+        <span>
+          <span class="who">Looked after by \${esc(short(v.address))}</span>
+          <span class="why">\${v.stakers} people already use it · picked for you</span>
+        </span>
+      </div>\` : ""}
+
+      <p class="note">Your NIM stays yours, in your own wallet. You are lending it
+      to the network to help keep it running, and being paid for it.</p>
+    \` : \`
+      <div class="msg wait">You need at least 100 NIM to start. That is the
+      network's own minimum, not ours.</div>
+    \`}
+
+    <div class="foot">
+      <button class="act" id="go" \${enough ? "" : "disabled"}>Put my NIM to work</button>
+      <p class="hint">\${provider ? "Nimiq Pay will ask you to confirm" : "Open inside Nimiq Pay to stake — this is a live preview of a real wallet"}</p>
+    </div>\`;
+}
+
+function screenWorking() {
+  const staked = BigInt(data.staked);
+  const spendable = BigInt(data.spendable);
+  return \`
+    <p class="kicker">Working for you</p>
+    <p class="hero grow">\${nim(staked)}<span class="unit">NIM</span></p>
+    <p class="sub">earning about \${fmtWeek(staked)} NIM a week</p>
+
+    <div class="tiles">
+      <div class="tile"><span class="k">Free to spend</span><span class="v">\${nim(spendable)}<span class="m"> NIM</span></span></div>
+      <div class="tile"><span class="k">A year at this rate</span><span class="v">\${(perWeek(staked) * 52).toFixed(0)}<span class="m"> NIM</span></span></div>
+    </div>
+
+    \${data.delegation ? \`<div class="keeper">
+      <span class="badge">✓</span>
+      <span>
+        <span class="who">Looked after by \${esc(short(data.delegation))}</span>
+        <span class="why">delegated · block \${data.height.toLocaleString("en-GB")}</span>
+      </span>
+    </div>\` : ""}
+
+    \${BigInt(data.retired) > 0n ? \`<div class="msg wait">
+      \${nim(data.retired)} NIM has been released and is ready to move back to your wallet.
+    </div>\` : ""}
+    \${BigInt(data.inactive) > 0n && BigInt(data.retired) === 0n ? \`<div class="msg wait">
+      \${nim(data.inactive)} NIM is on its way out. The network takes 12 hours to 4 days to release it.
+    </div>\` : ""}
+
+    <div class="foot">
+      <button class="act" id="more" \${spendable > MINIMUM ? "" : "disabled"}>Put more to work</button>
+      <button class="act quiet" id="out">Take it back</button>
+      <p class="hint">\${provider ? "Nimiq Pay will ask you to confirm" : "Live preview of a real staked wallet — every figure is on chain"}</p>
+    </div>\`;
+}
+
+/* ---- actions ------------------------------------------------------------- */
+function wire() {
+  const amt = $("amt");
+  const spendable = BigInt(data.spendable);
+
+  const showLeftover = () => {
+    if (!amt || !$("leftover")) return;
+    const want = BigInt(Math.max(0, Math.floor(Number(amt.value || 0) * 1e5)));
+    const left = spendable > want ? spendable - want : 0n;
+    $("leftover").textContent = "Leaves " + nim(left) + " NIM free to spend.";
+    const go = $("go");
+    if (go) go.disabled = want < MINIMUM || want > spendable;
+  };
+  amt?.addEventListener("input", showLeftover);
+  showLeftover();
+
+  for (const b of document.querySelectorAll("[data-set]")) {
+    b.addEventListener("click", () => {
+      const kind = b.dataset.set;
+      const whole = Number(spendable / LUNA);
+      amt.value = kind === "100" ? 100
+        : kind === "half" ? Math.floor(whole / 2)
+        // Never all of it: a wallet with nothing spendable cannot pay the fee
+        // to get back out again.
+        : Math.max(100, whole - 5);
+      showLeftover();
+    });
+  }
+
+  $("go")?.addEventListener("click", () => stake(BigInt(Math.floor(Number(amt.value) * 1e5)), true));
+  $("more")?.addEventListener("click", () => {
+    const whole = Number(spendable / LUNA);
+    stake(BigInt(Math.max(100, Math.floor(whole / 2))) * LUNA, false);
+  });
+  $("out")?.addEventListener("click", () => {
+    alert("Getting it back takes two steps and up to four days. Not built yet — next.");
+  });
+}
+
+async function stake(valueLuna, isFirst) {
+  if (busy) return;
+  if (!provider) {
+    say("wait", "This is a preview. Open it inside Nimiq Pay to stake your own NIM.");
+    return;
+  }
+  busy = true;
+  const btn = $("go") || $("more");
+  if (btn) { btn.disabled = true; btn.textContent = "Waiting for you to confirm…"; }
+
+  try {
+    // Sizes are in luna. The wallet signs; nothing here ever sees a key.
+    const value = Number(valueLuna);
+    const result = isFirst
+      ? await provider.sendNewStakerTransaction({ delegation: data.suggested.address, value })
+      : await provider.sendStakeTransaction({ value });
+
+    if (result && result.error) throw new Error(result.error.message || "the wallet refused");
+
+    // Broadcast is not settlement. Ask the chain, do not believe the reply.
+    say("wait", "Sent. Waiting for the chain to show it…");
+    await settle(String(result));
+  } catch (e) {
+    say("bad", String(e?.message || e));
+  } finally {
+    busy = false;
+    await refresh();
+  }
+}
+
+async function settle(hash) {
+  for (let i = 0; i < 30; i++) {
+    const r = await fetch("/api/tx/" + encodeURIComponent(hash)).then((x) => x.json()).catch(() => null);
+    if (r?.settled) {
+      say("wait", "Done — settled in block " + r.blockNumber.toLocaleString("en-GB") + ".");
+      return true;
+    }
+    await new Promise((r) => setTimeout(r, 2000));
+  }
+  // Accepted and then never seen. Saying nothing here is the one unforgivable
+  // outcome, because the person's money has moved and they do not know.
+  say("bad", "The network accepted it but it has not appeared yet. Nothing is lost — check again in a minute.");
+  return false;
+}
+
+function say(kind, text) {
+  let el = document.querySelector(".msg.live");
+  if (!el) {
+    el = document.createElement("div");
+    el.className = "msg live";
+    main.insertBefore(el, main.querySelector(".foot"));
+  }
+  el.className = "msg live " + kind;
+  el.textContent = text;
+}
+
+boot();
+</script>
+</div></body></html>`;
+}
