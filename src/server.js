@@ -70,6 +70,14 @@ async function overview(address) {
   const inactive = BigInt(staker?.inactiveBalance ?? 0);
   const retired = BigInt(staker?.retiredBalance ?? 0);
 
+  // The type definitions promise `inactiveRelease`. This node never sends one,
+  // so trusting it means every wait looks like it is already over. What does
+  // arrive is `inactiveFrom` — a future block, the next election block.
+  const releaseAt = staker?.inactiveRelease ?? staker?.inactiveFrom ?? null;
+
+  // One second per block, so the gap converts straight into a wait.
+  const secondsLeft = releaseAt && height < releaseAt ? releaseAt - height : 0;
+
   return {
     address,
     height,
@@ -78,8 +86,12 @@ async function overview(address) {
     staked: String(staked),
     inactive: String(inactive),
     retired: String(retired),
+    releaseAt,
+    secondsLeft,
     delegation: staker?.delegation ?? null,
-    isStaking: staked > 0n,
+    isStaking: staked > 0n || inactive > 0n || retired > 0n,
+    /** Which of the three steps out the money is on, if any. */
+    leaving: retired > 0n ? "ready" : inactive > 0n ? (secondsLeft > 0 ? "waiting" : "releasable") : null,
     validators: validators.slice(0, 12),
     suggested: validators[0] ?? null,
   };

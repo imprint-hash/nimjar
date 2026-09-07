@@ -103,6 +103,22 @@ ${PALETTE}
  .note code{font-family:var(--mono);font-size:11.5px}
  a{color:var(--accent)}
 
+ .leaving{border:1px solid var(--rule);border-radius:14px;padding:14px 15px 6px;
+   display:flex;flex-direction:column;gap:6px}
+ .leaving .kicker{font-family:var(--mono);font-size:9.5px;letter-spacing:.12em;
+   text-transform:uppercase;color:var(--faint)}
+ .track{display:flex;flex-direction:column;margin-top:6px}
+ .track-step{display:flex;gap:11px;align-items:flex-start;padding:7px 0}
+ .track-step .pip{width:11px;height:11px;border-radius:50%;flex:none;margin-top:4px;
+   background:var(--rule);box-shadow:0 0 0 1.5px var(--rule)}
+ .track-step.done .pip{background:var(--grow);box-shadow:0 0 0 1.5px var(--grow)}
+ .track-step.now .pip{background:var(--accent);box-shadow:0 0 0 1.5px var(--accent)}
+ .track-step .t{display:block;font-size:13px;font-weight:600;line-height:1.3}
+ .track-step .d{display:block;font-family:var(--mono);font-size:10.5px;color:var(--faint);
+   line-height:1.35;margin-top:2px}
+ .track-step.pending .t{color:var(--faint);font-weight:500}
+ .track-rail{width:1.5px;background:var(--rule);margin-left:4.75px;height:8px}
+
  .msg{border-radius:11px;padding:11px 13px;font-size:13px;line-height:1.45}
  .msg.bad{background:color-mix(in srgb,var(--bad) 12%,transparent);color:var(--bad);border:1px solid var(--bad)}
  .msg.wait{background:var(--accent-soft);color:var(--accent)}
@@ -263,18 +279,63 @@ function screenWorking() {
       </span>
     </div>\` : ""}
 
-    \${BigInt(data.retired) > 0n ? \`<div class="msg wait">
-      \${nim(data.retired)} NIM has been released and is ready to move back to your wallet.
-    </div>\` : ""}
-    \${BigInt(data.inactive) > 0n && BigInt(data.retired) === 0n ? \`<div class="msg wait">
-      \${nim(data.inactive)} NIM is on its way out. The network takes 12 hours to 4 days to release it.
-    </div>\` : ""}
+    \${data.leaving ? leavingPanel() : ""}
 
     <div class="foot">
-      <button class="act" id="more" \${spendable > MINIMUM ? "" : "disabled"}>Put more to work</button>
-      <button class="act quiet" id="out">Take it back</button>
+      \${staked > 0n ? \`<button class="act" id="more" \${spendable > MINIMUM ? "" : "disabled"}>Put more to work</button>\` : ""}
+      \${staked > 0n && !data.leaving ? \`<button class="act quiet" id="out">Take it back</button>\` : ""}
       <p class="hint">\${provider ? "Nimiq Pay will ask you to confirm" : "Live preview of a real staked wallet — every figure is on chain"}</p>
     </div>\`;
+}
+
+/**
+ * The way out.
+ *
+ * Three transactions with a wait in the middle, and the middle one cannot be
+ * undone. Nimiq's own FAQ says it is two steps; it is three. Nobody else in the
+ * ecosystem has built this, which is exactly why it is worth building properly.
+ *
+ * The rule for this panel: never let anyone reach the irreversible step without
+ * having read the word irreversible.
+ */
+function leavingPanel() {
+  const inactive = BigInt(data.inactive);
+  const retired = BigInt(data.retired);
+  const stage = data.leaving;
+
+  const step = (n, state, title, detail) => \`
+    <div class="track-step \${state}">
+      <span class="pip"></span>
+      <span><span class="t">\${title}</span><span class="d">\${detail}</span></span>
+    </div>\${n < 3 ? '<div class="track-rail"></div>' : ""}\`;
+
+  return \`
+    <div class="leaving">
+      <p class="kicker">Coming back to you</p>
+      <p class="hero" style="font-size:34px">\${nim(inactive + retired)}<span class="unit">NIM</span></p>
+      <div class="track">
+        \${step(1, "done", "You asked for it back", "confirmed")}
+        \${step(2, stage === "waiting" ? "now" : "done",
+          stage === "waiting" ? "The network is releasing it" : "Released by the network",
+          stage === "waiting" ? countdown(data.secondsLeft) : "ready")}
+        \${step(3, stage === "ready" ? "now" : "pending",
+          stage === "ready" ? "Move it back to your wallet" : "Back in your wallet",
+          stage === "ready" ? "one tap, nothing to wait for" : "one more tap, when ready")}
+      </div>
+    </div>
+    \${stage === "releasable" ? \`
+      <div class="msg bad">Next step cannot be undone. Once retired, this NIM can
+      only be withdrawn — it can never go back to work.</div>
+      <button class="act" id="retire">Retire \${nim(inactive)} NIM — permanent</button>\` : ""}
+    \${stage === "ready" ? \`<button class="act" id="withdraw">Move \${nim(retired)} NIM back to my wallet</button>\` : ""}\`;
+}
+
+/** A wait in words people use, not a block number. */
+function countdown(seconds) {
+  if (seconds <= 0) return "ready";
+  const h = seconds / 3600;
+  if (h < 1) return \`about \${Math.max(1, Math.round(seconds / 60))} minutes left\`;
+  return \`about \${h.toFixed(1)} hours left\`;
 }
 
 /* ---- actions ------------------------------------------------------------- */
@@ -311,9 +372,44 @@ function wire() {
     const whole = Number(spendable / LUNA);
     stake(BigInt(Math.max(100, Math.floor(whole / 2))) * LUNA, false);
   });
+  // Getting out, step one: deactivate. The wallet call takes what should stay
+  // working, not what should leave — passing 0 takes everything out.
   $("out")?.addEventListener("click", () => {
-    alert("Getting it back takes two steps and up to four days. Not built yet — next.");
+    if (!provider) return say("wait", "This is a preview. Open it inside Nimiq Pay to move your own NIM.");
+    if (!confirm("Take it all back?\\n\\nIt stops earning now, and the network takes up to twelve hours to release it. You will need two more taps after that.")) return;
+    run(() => provider.sendSetActiveStakeTransaction({ newActiveBalance: 0 }),
+        "Asked for it back. The network is releasing it now.");
   });
+
+  $("retire")?.addEventListener("click", () => {
+    if (!provider) return say("wait", "This is a preview. Open it inside Nimiq Pay to move your own NIM.");
+    if (!confirm("This cannot be undone.\\n\\nRetired NIM can only be withdrawn — it can never be put back to work. Continue?")) return;
+    run(() => provider.sendRetireStakeTransaction({ retireStake: Number(data.inactive) }),
+        "Retired. One tap left.");
+  });
+
+  $("withdraw")?.addEventListener("click", () => {
+    if (!provider) return say("wait", "This is a preview. Open it inside Nimiq Pay to move your own NIM.");
+    run(() => provider.sendRemoveStakeTransaction({ value: Number(data.retired) }),
+        "Back in your wallet.");
+  });
+}
+
+/** One shape for every wallet action: ask, wait for the chain, never assume. */
+async function run(send, doneText) {
+  if (busy) return;
+  busy = true;
+  try {
+    const result = await send();
+    if (result && result.error) throw new Error(result.error.message || "the wallet refused");
+    say("wait", "Sent. Waiting for the chain to show it…");
+    if (await settle(String(result))) say("wait", doneText);
+  } catch (e) {
+    say("bad", String(e?.message || e));
+  } finally {
+    busy = false;
+    await refresh();
+  }
 }
 
 async function stake(valueLuna, isFirst) {
