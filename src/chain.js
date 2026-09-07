@@ -72,8 +72,34 @@ export function signAddStake({ keyPair, staker, valueLuna, validityStartHeight, 
 }
 
 /**
- * Getting out, step one of two: tell the network you want the stake back.
- * Nothing moves yet — the release takes from twelve hours to four days.
+ * Getting out, step one of three: deactivate.
+ *
+ * The parameter is what stays **working**, not what leaves. Pass 0 to take
+ * everything out. Deactivated stake moves to `inactiveBalance` and is released
+ * about twelve hours later, on the next election block.
+ *
+ * This step is reversible — call it again with a higher number to put stake
+ * back to work. The next one is not.
+ */
+export function signSetActiveStake({ keyPair, newActiveBalanceLuna, validityStartHeight, networkId }) {
+  const tx = withMeasuredFee((fee) =>
+    Nimiq.TransactionBuilder.newSetActiveStake(
+      keyPair.toAddress(),
+      BigInt(newActiveBalanceLuna),
+      fee,
+      validityStartHeight,
+      networkId,
+    ),
+  );
+  tx.sign(keyPair);
+  return tx;
+}
+
+/**
+ * Getting out, step two of three. **Irreversible.**
+ *
+ * Retired stake can only ever be withdrawn — it can never go back to work. Only
+ * released inactive balance can be retired, so this fails until the wait is up.
  */
 export function signRetireStake({ keyPair, valueLuna, validityStartHeight, networkId }) {
   const tx = withMeasuredFee((fee) =>
@@ -89,7 +115,7 @@ export function signRetireStake({ keyPair, valueLuna, validityStartHeight, netwo
   return tx;
 }
 
-/** Getting out, step two: move the released stake back to the wallet. */
+/** Getting out, step three of three: the money lands back in the wallet. */
 export function signRemoveStake({ keyPair, valueLuna, validityStartHeight, networkId }) {
   const tx = withMeasuredFee((fee) =>
     Nimiq.TransactionBuilder.newRemoveStake(
