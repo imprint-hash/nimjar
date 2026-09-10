@@ -115,17 +115,24 @@ export function signRetireStake({ keyPair, valueLuna, validityStartHeight, netwo
   return tx;
 }
 
-/** Getting out, step three of three: the money lands back in the wallet. */
-export function signRemoveStake({ keyPair, valueLuna, validityStartHeight, networkId }) {
-  const tx = withMeasuredFee((fee) =>
+/**
+ * Getting out, step three of three: the money lands back in the wallet.
+ *
+ * In this one transaction the staking contract is the sender, so the fee comes
+ * out of the retired balance itself. Asking for the whole retired amount plus a
+ * fee asks for more than exists: the node accepts it, then it never lands.
+ * Found on mainnet on 10 Sep 2026 — it is exactly the silent failure this app
+ * is built to catch. So the amount withdrawn is the retired balance minus fee.
+ */
+export function signRemoveStake({ keyPair, retiredLuna, validityStartHeight, networkId }) {
+  const retired = BigInt(retiredLuna);
+  const build = (value, fee) =>
     Nimiq.TransactionBuilder.newRemoveStake(
-      keyPair.toAddress(),
-      BigInt(valueLuna),
-      fee,
-      validityStartHeight,
-      networkId,
-    ),
-  );
+      keyPair.toAddress(), value, fee, validityStartHeight, networkId,
+    );
+  const fee = BigInt(build(retired, 0n).serializedSize);
+  if (fee >= retired) throw new Error("retired balance is too small to cover the fee");
+  const tx = build(retired - fee, fee);
   tx.sign(keyPair);
   return tx;
 }

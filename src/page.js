@@ -452,7 +452,11 @@ function wire() {
 
   $("withdraw")?.addEventListener("click", () => {
     if (!provider) return say("wait", "This is a preview. Open it inside Nimiq Pay to move your own NIM.");
-    run(() => provider.sendRemoveStakeTransaction({ value: Number(data.retired) }),
+    // The staking contract is the sender here, so the fee comes out of the
+    // retired balance. Asking for all of it plus a fee is accepted by the node
+    // and then never lands — proven on mainnet, 10 Sep. Leave room for the fee.
+    const fee = 200;   // luna; a remove-stake is 167 bytes at one luna per byte
+    run(() => provider.sendRemoveStakeTransaction({ value: Number(data.retired) - fee, fee }),
         "Back in your wallet.");
   });
 }

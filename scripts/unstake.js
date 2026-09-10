@@ -130,10 +130,10 @@ async function main() {
 
   if (command === "withdraw") {
     if (retired <= 0n) { console.log("Nothing retired to withdraw."); process.exit(1); }
-    line("action", `withdraw ${nim(retired)} NIM back to the wallet`);
     const tx = signRemoveStake({
-      keyPair, valueLuna: retired, validityStartHeight: height, networkId: NETWORK_ID,
+      keyPair, retiredLuna: retired, validityStartHeight: height, networkId: NETWORK_ID,
     });
+    line("action", `withdraw ${nim(BigInt(tx.value))} NIM back to the wallet (fee paid from the stake)`);
     return send(tx, "Back in your wallet.");
   }
 

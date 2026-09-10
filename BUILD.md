@@ -43,7 +43,39 @@ data — real numbers a judge can check on a block explorer.
 
 ---
 
-## 2. Walking skeleton ← now
+### Full round trip — completed 10 Sep
+
+Money in and money out, every step on mainnet:
+
+```
+create staker   100 NIM   block 60,975,069   083ce2d7…cd62f463
+add stake       100 NIM   block 60,977,452   a83117c9…3dd3305d
+deactivate      100 NIM   block 60,977,466   6f5c2dfe…a1c4eb9c
+retire          100 NIM   block 61,248,207   b93d96f6…6442a81d7   irreversible
+withdraw        100 NIM   block 61,248,363   9827161d…4e6750de35
+```
+
+Wallet before the withdrawal: 1,798.94097 NIM. After: 1,898.94028 NIM.
+Change: **+99.99931 NIM** — the 100 NIM, less a 0.00069 NIM fee.
+
+**Three more things the docs do not tell you**
+
+- **Getting out is three transactions, not two.** Nimiq's staking FAQ says two.
+  It is deactivate, then retire (irreversible), then withdraw
+- **`inactiveRelease` is never sent.** The type definitions promise it; this
+  node returns `inactiveFrom` instead. Reading the promised field makes every
+  wait look already over
+- **The withdrawal fee comes out of the stake.** In a remove-stake the staking
+  contract is the sender, so asking for the whole retired balance plus a fee
+  asks for more than exists. The node **accepts it and it never lands** — no
+  error, a valid-looking hash, nothing on chain. It happened here first:
+  `85a12516…910764b04` was accepted and vanished. Withdrawing the balance minus
+  the fee landed at once
+
+That last one is the exact silent failure this app is built to catch, found by
+the app's own confirmation check rather than by a user losing money.
+
+## 2. Walking skeleton ✅
 
 The whole path, end to end, ugly on purpose.
 
