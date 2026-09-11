@@ -247,9 +247,20 @@ export class Chain {
    * first byte. Guessing at prefixes works right up until it silently doesn't.
    */
   async stakingHistory(address, max = 20) {
-    const txs = await this.call("getTransactionsByAddress", [String(address), max, null]);
+    const me = String(address);
+    const own = (await this.call("getTransactionsByAddress", [me, max, null])) ?? [];
+    // Nimiq Pay pays for staking out of the swap contracts it parks your NIM
+    // in, so those transactions list under the contract, not your address.
+    // Read your own contracts' histories too, or a Pay user's diary is empty.
+    const htlcs = [...new Set(own.filter((t) => t.from === me && t.toType === 2).map((t) => t.to))];
+    const more = await Promise.all(htlcs.map((h) =>
+      this.call("getTransactionsByAddress", [h, max, null]).catch(() => [])));
+    const seen = new Set();
+    const txs = [...own, ...more.flat()]
+      .filter((t) => (seen.has(t.hash) ? false : seen.add(t.hash)))
+      .sort((a, b) => b.blockNumber - a.blockNumber);
     const out = [];
-    for (const t of txs ?? []) {
+    for (const t of txs) {
       if (!t.recipientData) continue;
       let plain;
       try { plain = Nimiq.StakingContract.dataToPlain(Buffer.from(t.recipientData, "hex")); }
