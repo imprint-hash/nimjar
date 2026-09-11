@@ -172,6 +172,20 @@ const MINIMUM = 10000000n;            // 100 NIM, from the chain's own policy
 const YEARLY = 0.15;                  // ~15%. Shown per week, never as a percentage.
 const LUNA = 100000n;
 
+/* Fees, in luna, set explicitly on every wallet call.
+   Nimiq Pay's own docs say it "chooses a fee automatically, using 0 if
+   possible". A zero-fee transaction is how our very first mainnet payment
+   vanished — accepted by the node, never relayed, no error. So each fee here
+   is the transaction's measured size at one luna per byte, rounded up. */
+const FEE = {
+  create: 300,       // create-staker, 286 bytes
+  add: 200,          // add-stake, 187 bytes
+  deactivate: 300,   // set-active-stake, 273 bytes
+  retire: 300,       // retire-stake, 273 bytes
+  withdraw: 200,     // remove-stake, 167 bytes — paid out of the stake itself
+};
+const EXPLORER = NETWORK_ID === 24 ? "https://nimiq.watch/#" : "https://test.nimiq.watch/#";
+
 const $ = (id) => document.getElementById(id);
 const main = $("main");
 
@@ -278,15 +292,25 @@ function screenStart() {
 function screenWorking() {
   const staked = BigInt(data.staked);
   const spendable = BigInt(data.spendable);
+  // Everything on its way out: a big green "Working for you: 0 NIM" reads as
+  // a failure. The money coming back is the only number worth the headline.
+  const allLeaving = staked === 0n && data.leaving;
   return \`
-    <p class="kicker">Working for you</p>
-    <p class="hero grow">\${nim(staked)}<span class="unit">NIM</span></p>
-    <p class="sub">earning about \${fmtWeek(staked)} NIM a week</p>
-
-    <div class="tiles">
-      <div class="tile"><span class="k">Free to spend</span><span class="v">\${nim(spendable)}<span class="m"> NIM</span></span></div>
-      <div class="tile"><span class="k">A year at this rate</span><span class="v">\${(perWeek(staked) * 52).toFixed(0)}<span class="m"> NIM</span></span></div>
-    </div>
+    \${allLeaving ? \`
+      <p class="kicker">On its way back to you</p>
+      <p class="hero">\${nim(BigInt(data.inactive) + BigInt(data.retired))}<span class="unit">NIM</span></p>
+      <p class="sub">nothing is earning right now</p>
+      <div class="tiles">
+        <div class="tile"><span class="k">Free to spend</span><span class="v">\${nim(spendable)}<span class="m"> NIM</span></span></div>
+        <div class="tile"><span class="k">Working</span><span class="v">0<span class="m"> NIM</span></span></div>
+      </div>\` : \`
+      <p class="kicker">Working for you</p>
+      <p class="hero grow">\${nim(staked)}<span class="unit">NIM</span></p>
+      <p class="sub">earning about \${fmtWeek(staked)} NIM a week</p>
+      <div class="tiles">
+        <div class="tile"><span class="k">Free to spend</span><span class="v">\${nim(spendable)}<span class="m"> NIM</span></span></div>
+        <div class="tile"><span class="k">A year at this rate</span><span class="v">\${(perWeek(staked) * 52).toFixed(0)}<span class="m"> NIM</span></span></div>
+      </div>\`}
 
     \${data.delegation ? \`<div class="keeper">
       <span class="badge">✓</span>
@@ -375,7 +399,7 @@ async function loadHistory() {
       <div class="history">
         <p class="kicker">What you've done</p>
         \${history.slice(0, 5).map((h) => \`
-          <a class="hrow" href="https://nimiq.watch/#\${esc(h.hash)}" target="_blank" rel="noopener">
+          <a class="hrow" href="\${EXPLORER}\${esc(h.hash)}" target="_blank" rel="noopener">
             <span class="hwhat">\${ACTION_NAMES[h.type] || h.type}</span>
             <span class="hamt">\${BigInt(h.value) > 0n ? nim(h.value) + " NIM" : ""}</span>
             <span class="hwhen">\${when(h.timestamp)}</span>
@@ -439,14 +463,14 @@ function wire() {
   $("out")?.addEventListener("click", () => {
     if (!provider) return say("wait", "This is a preview. Open it inside Nimiq Pay to move your own NIM.");
     if (!confirm("Take it all back?\\n\\nIt stops earning now, and the network takes up to twelve hours to release it. You will need two more taps after that.")) return;
-    run(() => provider.sendSetActiveStakeTransaction({ newActiveBalance: 0 }),
+    run(() => provider.sendSetActiveStakeTransaction({ newActiveBalance: 0, fee: FEE.deactivate }),
         "Asked for it back. The network is releasing it now.");
   });
 
   $("retire")?.addEventListener("click", () => {
     if (!provider) return say("wait", "This is a preview. Open it inside Nimiq Pay to move your own NIM.");
     if (!confirm("This cannot be undone.\\n\\nRetired NIM can only be withdrawn — it can never be put back to work. Continue?")) return;
-    run(() => provider.sendRetireStakeTransaction({ retireStake: Number(data.inactive) }),
+    run(() => provider.sendRetireStakeTransaction({ retireStake: Number(data.inactive), fee: FEE.retire }),
         "Retired. One tap left.");
   });
 
@@ -455,7 +479,7 @@ function wire() {
     // The staking contract is the sender here, so the fee comes out of the
     // retired balance. Asking for all of it plus a fee is accepted by the node
     // and then never lands — proven on mainnet, 10 Sep. Leave room for the fee.
-    const fee = 200;   // luna; a remove-stake is 167 bytes at one luna per byte
+    const fee = FEE.withdraw;
     run(() => provider.sendRemoveStakeTransaction({ value: Number(data.retired) - fee, fee }),
         "Back in your wallet.");
   });
@@ -492,8 +516,8 @@ async function stake(valueLuna, isFirst) {
     // Sizes are in luna. The wallet signs; nothing here ever sees a key.
     const value = Number(valueLuna);
     const result = isFirst
-      ? await provider.sendNewStakerTransaction({ delegation: data.suggested.address, value })
-      : await provider.sendStakeTransaction({ value });
+      ? await provider.sendNewStakerTransaction({ delegation: data.suggested.address, value, fee: FEE.create })
+      : await provider.sendStakeTransaction({ value, fee: FEE.add });
 
     if (result && result.error) throw new Error(result.error.message || "the wallet refused");
 

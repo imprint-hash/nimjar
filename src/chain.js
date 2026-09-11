@@ -190,6 +190,39 @@ export class Chain {
   }
 
   /**
+   * What Nimiq Pay would call your balance: the plain address plus NIM it has
+   * parked in swap contracts on your behalf.
+   *
+   * Nimiq Pay sweeps anything above an "auto-deposit threshold" (5 NIM by
+   * default) into an HTLC it controls with you as the sender, seconds after it
+   * arrives. So for most Pay users the plain address holds almost nothing while
+   * the wallet shows thousands — and Pay funds staking straight out of those
+   * HTLCs. Found on testnet, 11 Sep 2026: a 110,000 NIM faucet payment was
+   * swept two seconds after landing, then create-staker and add-stake were
+   * both paid from the HTLC, not the address.
+   *
+   * Reading only the plain address therefore tells a Pay user with 109,000 NIM
+   * that they need 100 to start. This sums every HTLC that names them as sender
+   * and still holds funds.
+   */
+  async payBalance(address, lookback = 50) {
+    const me = String(address);
+    const [plain, txs] = await Promise.all([
+      this.balance(me),
+      this.call("getTransactionsByAddress", [me, lookback, null]).catch(() => []),
+    ]);
+    const htlcs = [...new Set((txs ?? [])
+      .filter((t) => t.from === me && t.toType === 2)
+      .map((t) => t.to))];
+    let held = 0n;
+    for (const h of htlcs) {
+      const acc = await this.call("getAccountByAddress", [h]).catch(() => null);
+      if (acc?.type === "htlc" && acc.sender === me) held += BigInt(acc.balance ?? 0);
+    }
+    return { plain, held, total: plain + held };
+  }
+
+  /**
    * What the staking contract knows about this address, or null if nothing.
    *
    * "Never staked" is a normal state, not an error, but the node reports it as

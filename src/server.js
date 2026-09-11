@@ -59,8 +59,8 @@ async function healthyValidators() {
 
 /** Everything one screen needs, in one request. */
 async function overview(address) {
-  const [balance, staker, validators, height] = await Promise.all([
-    chain.balance(address),
+  const [pay, staker, validators, height] = await Promise.all([
+    chain.payBalance(address),
     chain.staker(address),
     healthyValidators(),
     chain.height(),
@@ -82,7 +82,11 @@ async function overview(address) {
     address,
     height,
     networkId: NETWORK_ID,
-    spendable: String(balance),
+    // What the wallet itself shows: address plus NIM Pay has parked in swap
+    // contracts. The parts are kept so the screen can explain a mismatch.
+    spendable: String(pay.total),
+    inAddress: String(pay.plain),
+    heldByPay: String(pay.held),
     staked: String(staked),
     inactive: String(inactive),
     retired: String(retired),
@@ -122,7 +126,11 @@ const server = http.createServer(async (req, res) => {
 
     if (req.method === "GET" && url.pathname === "/api/overview") {
       const address = url.searchParams.get("address") || DEMO_ADDRESS;
-      return json(res, 200, await overview(address));
+      const o = await overview(address);
+      // Addresses are public on chain; logging which one asked makes a wrong
+      // balance debuggable without asking the user to read hex off a phone.
+      console.log(`[overview] ${address} → spendable ${nim(BigInt(o.spendable))} NIM, staked ${nim(BigInt(o.staked))} NIM`);
+      return json(res, 200, o);
     }
 
     // Every action, with its hash. A staking app that asks to be trusted and
