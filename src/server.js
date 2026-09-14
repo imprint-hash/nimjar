@@ -23,17 +23,42 @@ import { Chain, nim } from "./chain.js";
 import { renderApp } from "./page.js";
 
 const PORT = Number(process.env.PORT || 8080);
-const RPC_URL = process.env.RPC_URL || "https://rpc.nimiqwatch.com";
-const NETWORK_ID = Number(process.env.NETWORK_ID || 24);
 
 /**
- * A wallet we know is staking, shown when the app is opened outside Nimiq Pay —
- * which is where anyone on a laptop will open it. Better a real wallet with real
- * numbers a visitor can check on a block explorer than an empty screen.
+ * Both Nimiq networks, served side by side.
+ *
+ * Nimiq Pay can be switched to testnet, and a mini app can't tell which network
+ * it's on except by asking. A server that only reads mainnet shows a testnet
+ * user 0 NIM (found 14 Sep 2026, on a phone that had 111,000 testnet NIM). So
+ * the page asks Nimiq Pay for its block height, picks the network it matches,
+ * and names it in every request. That also lets anyone try NimJar end to end
+ * with free testnet NIM, without risking real money.
+ *
+ * Each network has a wallet we know stakes (or staked), shown in preview when
+ * the app is opened outside Nimiq Pay, so the screen is never empty and every
+ * figure on it can be checked on a block explorer.
  */
-const DEMO_ADDRESS = process.env.DEMO_ADDRESS || "NQ19 4DVG ARRM PVLY 45HC MRY7 5Y9U 31EG JF9U";
+const DEFAULT_NET = Number(process.env.NETWORK_ID || 24) === 24 ? "main" : "test";
+const pick = (name, isDefault, fallback) => process.env[name] || (isDefault && process.env[name.replace(/_(MAIN|TEST)$/, "")]) || fallback;
+const NETS = {
+  main: {
+    id: 24,
+    rpc: pick("RPC_URL_MAIN", DEFAULT_NET === "main", "https://rpc.nimiqwatch.com"),
+    directoryUrl: pick("VALIDATORS_API_MAIN", DEFAULT_NET === "main", "https://validators-api-main.je-cf9.workers.dev"),
+    demo: pick("DEMO_ADDRESS_MAIN", DEFAULT_NET === "main", "NQ19 4DVG ARRM PVLY 45HC MRY7 5Y9U 31EG JF9U"),
+  },
+  test: {
+    id: 5,
+    rpc: pick("RPC_URL_TEST", DEFAULT_NET === "test", "https://rpc.testnet.nimiqwatch.com"),
+    directoryUrl: pick("VALIDATORS_API_TEST", DEFAULT_NET === "test", "https://validators-api-test.je-cf9.workers.dev"),
+    demo: pick("DEMO_ADDRESS_TEST", DEFAULT_NET === "test", "NQ72 59DJ JNM7 DK3S 98CC AQ32 NG23 QQHA 33ER"),
+  },
+};
+for (const [name, n] of Object.entries(NETS)) Object.assign(n, { name, chain: new Chain({ url: n.rpc }), directory: { at: 0, list: [] } });
+const netOf = (url) => NETS[url.searchParams.get("net")] ?? NETS[DEFAULT_NET];
 
-const chain = new Chain({ url: RPC_URL });
+// The default network, for start-up logs and the page's first render.
+const { id: NETWORK_ID, rpc: RPC_URL, demo: DEMO_ADDRESS } = NETS[DEFAULT_NET];
 
 /**
  * Amounts this small are treated as nothing. If a few luna are ever left in the
@@ -100,8 +125,8 @@ const SECURITY = {
  * Validators the chain says are healthy: not retired, not jailed, not flagged
  * inactive. Necessary, but not enough to recommend one.
  */
-async function healthyValidators() {
-  const all = await chain.validators();
+async function healthyValidators(net) {
+  const all = await net.chain.validators();
   return all
     .filter((v) => !v.retired && v.inactivityFlag == null && v.jailedFrom == null)
     .map((v) => ({ address: v.address, stakers: v.numStakers ?? 0 }));
@@ -117,17 +142,14 @@ async function healthyValidators() {
  * were listed with payout type "none" — stake there earns nothing. Picking by
  * chain data alone could send someone's NIM to one of them.
  */
-const DIRECTORY_URL = process.env.VALIDATORS_API
-  || (NETWORK_ID === 24 ? "https://validators-api-main.je-cf9.workers.dev" : "https://validators-api-test.je-cf9.workers.dev");
-let directory = { at: 0, list: [] };
-
-async function validatorDirectory() {
+async function validatorDirectory(net) {
+  const directory = net.directory;
   if (Date.now() - directory.at < 10 * 60_000) return directory.list;
   try {
-    const r = await fetch(DIRECTORY_URL + "/api/v1/validators", { signal: AbortSignal.timeout(8000) });
+    const r = await fetch(net.directoryUrl + "/api/v1/validators", { signal: AbortSignal.timeout(8000) });
     if (!r.ok) throw new Error(`answered ${r.status}`);
     const all = await r.json();
-    directory = {
+    Object.assign(directory, {
       at: Date.now(),
       list: all.map((v) => ({
         address: v.address,
@@ -138,9 +160,9 @@ async function validatorDirectory() {
         dominance: typeof v.dominanceRatio === "number" && v.dominanceRatio >= 0 ? v.dominanceRatio : null,
         color: /^#[0-9a-f]{6}$/i.test(v.accentColor ?? "") ? v.accentColor : null,
       })),
-    };
+    });
   } catch (e) {
-    console.log(`[validators] directory unavailable (${e.message}); retrying in a minute`);
+    console.log(`[validators] ${net.name} directory unavailable (${e.message}); retrying in a minute`);
     directory.at = Date.now() - 9 * 60_000;
   }
   return directory.list;
@@ -188,12 +210,13 @@ function describe(address, healthy, dir) {
 }
 
 /** Everything one screen needs, in one request. */
-async function overview(address) {
+async function overview(address, net) {
+  const chain = net.chain;
   const [pay, staker, healthy, dir, height] = await Promise.all([
     chain.payBalance(address),
     chain.staker(address),
-    healthyValidators(),
-    validatorDirectory(),
+    healthyValidators(net),
+    validatorDirectory(net),
     chain.height(),
   ]);
 
@@ -228,7 +251,8 @@ async function overview(address) {
   return {
     address,
     height,
-    networkId: NETWORK_ID,
+    networkId: net.id,
+    net: net.name,
     // What the wallet itself shows: address plus NIM Pay has parked in swap
     // contracts. The parts are kept so the screen can explain a mismatch.
     spendable: String(pay.total),
@@ -260,7 +284,7 @@ export async function handler(req, res) {
   try {
     if (req.method === "GET" && url.pathname === "/") {
       res.writeHead(200, { ...SECURITY, "content-type": "text/html; charset=utf-8", "cache-control": "no-cache" });
-      return res.end(renderApp({ demoAddress: DEMO_ADDRESS, networkId: NETWORK_ID }));
+      return res.end(renderApp({ net: DEFAULT_NET, demo: { main: NETS.main.demo, test: NETS.test.demo } }));
     }
 
     if (req.method === "GET" && TYPES[url.pathname]) {
@@ -278,20 +302,28 @@ export async function handler(req, res) {
       return json(res, 400, { error: "that is not a Nimiq address" });
     }
 
+    // Both networks' heights, so the page can tell which one Nimiq Pay is on.
+    if (req.method === "GET" && url.pathname === "/api/networks") {
+      const heights = await Promise.all(Object.values(NETS).map((n) => n.chain.height().catch(() => null)));
+      return json(res, 200, Object.fromEntries(Object.keys(NETS).map((k, i) => [k, { id: NETS[k].id, height: heights[i] }])));
+    }
+
+    const net = netOf(url);
+
     if (req.method === "GET" && url.pathname === "/api/overview") {
-      const address = url.searchParams.get("address")?.trim() || DEMO_ADDRESS;
-      const o = await overview(address);
+      const address = url.searchParams.get("address")?.trim() || net.demo;
+      const o = await overview(address, net);
       // Addresses are public on chain; logging which one asked makes a wrong
       // balance debuggable without asking the user to read hex off a phone.
-      console.log(`[overview] ${address} → spendable ${nim(BigInt(o.spendable))} NIM, staked ${nim(BigInt(o.staked))} NIM`);
+      console.log(`[overview] ${net.name} ${address} → spendable ${nim(BigInt(o.spendable))} NIM, staked ${nim(BigInt(o.staked))} NIM`);
       return json(res, 200, o);
     }
 
     // Every action, with its hash. A staking app that asks to be trusted and
     // then shows nothing checkable is asking for the wrong thing.
     if (req.method === "GET" && url.pathname === "/api/history") {
-      const address = url.searchParams.get("address")?.trim() || DEMO_ADDRESS;
-      return json(res, 200, { history: await chain.stakingHistory(address, 20) });
+      const address = url.searchParams.get("address")?.trim() || net.demo;
+      return json(res, 200, { history: await net.chain.stakingHistory(address, 20) });
     }
 
     // Broadcast is not settlement, so the page asks here whether a hash has
@@ -306,7 +338,7 @@ export async function handler(req, res) {
         catch { return json(res, 400, { error: "that is not a transaction" }); }
       }
       if (!/^[0-9a-f]{64}$/i.test(hash)) return json(res, 400, { error: "that is not a transaction hash" });
-      const found = await chain.lookup(hash);
+      const found = await net.chain.lookup(hash);
       console.log(`[tx] ${hash.slice(0, 12)}… ${found ? `in block ${found.blockNumber}${found.executionResult === false ? " (FAILED)" : ""}` : "not seen yet"}`);
       return json(res, 200, {
         hash,
@@ -338,7 +370,7 @@ if (runDirectly) {
     console.log(`  network : ${NETWORK_ID === 24 ? "mainnet" : `id ${NETWORK_ID}`} via ${RPC_URL}`);
     console.log(`  reads only — every transaction is signed by the user's own wallet`);
     try {
-      const o = await overview(DEMO_ADDRESS);
+      const o = await overview(DEMO_ADDRESS, NETS[DEFAULT_NET]);
       console.log(`  demo    : ${nim(BigInt(o.staked))} NIM staked, ${nim(BigInt(o.spendable))} NIM spendable`);
     } catch (e) {
       console.log(`  demo    : could not reach the chain — ${e.message}`);

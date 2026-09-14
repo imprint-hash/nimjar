@@ -12,8 +12,14 @@
 import { init } from "/sdk.js";
 
 const CFG = JSON.parse(document.getElementById("cfg").textContent);
-const NETWORK_ID = CFG.networkId;
-const EXPLORER = NETWORK_ID === 24 ? "https://nimiq.watch/#" : "https://test.nimiq.watch/#";
+/* Which Nimiq network: the server's default until Nimiq Pay says otherwise.
+   Nimiq Pay can run on testnet, and a user there with 111,000 test NIM would
+   otherwise be shown their mainnet balance of 0. */
+const explorer = () => (S.net === "test" ? "https://test.nimiq.watch/#" : "https://nimiq.watch/#");
+const api = (path, params = {}) => {
+  const q = new URLSearchParams({ ...params, net: S.net });
+  return fetch(`/api/${path}?${q}`);
+};
 
 const LUNA = 100000n;
 const MINIMUM = 10000000n;       // 100 NIM, from the chain's own policy
@@ -45,7 +51,8 @@ const toTop = (smooth = true) => (framed() ? device : window).scrollTo({ top: 0,
 
 const S = {
   provider: null,           // null outside Nimiq Pay
-  address: CFG.demoAddress,
+  net: CFG.net,
+  address: CFG.demo[CFG.net],
   data: null,
   error: null,
   history: [],
@@ -177,7 +184,7 @@ function wallet() {
 let waitTimer = null;
 async function refresh() {
   try {
-    const r = await fetch("/api/overview?address=" + encodeURIComponent(S.address));
+    const r = await api("overview", { address: S.address });
     const body = await r.json();
     if (!r.ok) throw new Error(body.error || "the node did not answer");
     S.data = body;
@@ -200,7 +207,7 @@ async function refresh() {
 
 async function loadHistory() {
   try {
-    const r = await fetch("/api/history?address=" + encodeURIComponent(S.address));
+    const r = await api("history", { address: S.address });
     const { history } = await r.json();
     S.history = Array.isArray(history) ? history.slice(0, 5) : [];
     const box = $("activity");
@@ -221,7 +228,7 @@ function mood() {
 function header() {
   const live = !!S.provider;
   return `<header class="top">${mascot(52, mood())}<div class="name">NimJar</div>
-    <div class="mode ${live ? "live" : ""}"><i></i>${live ? "Live" : "Preview"}</div></header>`;
+    <div class="mode ${live ? "live" : ""}"><i></i>${live ? "Live" : "Preview"}${S.net === "test" ? " · Testnet" : ""}</div></header>`;
 }
 
 function seg(label, luna, color) {
@@ -337,7 +344,7 @@ function activity() {
     let shown = amount != null && BigInt(amount) > 0n ? nim(amount) + " NIM" : "";
     // On chain but changed nothing. Shown as what it was, never as done.
     if (h.ok === false) { label = `${attempt}: didn't go through`; dot = "--red-soft"; icon = "x"; shown = ""; }
-    return `<a class="row" href="${EXPLORER}${esc(h.hash)}" target="_blank" rel="noopener">
+    return `<a class="row" href="${explorer()}${esc(h.hash)}" target="_blank" rel="noopener">
       <div class="dot" style="background:var(${dot})">${ic(icon)}</div>
       <div class="t"><b>${esc(label)}</b><span>${when(h.timestamp)}</span></div>
       <div class="amt">${shown}<span>Proof ↗</span></div></a>`;
@@ -383,7 +390,7 @@ function render() {
   if (S.view === "form" && w.maxStake < MINIMUM) S.view = "home";
   const showForm = !w.isStaking || S.view === "form";
   const preview = S.provider ? "" :
-    `<div class="msg">Preview: this is a real staked wallet on Nimiq ${NETWORK_ID === 24 ? "mainnet" : "testnet"}. Open NimJar inside Nimiq Pay to stake your own NIM.</div>`;
+    `<div class="msg">Preview: this is a real staked wallet on Nimiq ${S.net === "test" ? "testnet" : "mainnet"}. Open NimJar inside Nimiq Pay to stake your own NIM.</div>`;
 
   let body = "";
   if (showForm) {
@@ -533,7 +540,7 @@ async function run(send, sentText, doneText) {
 /** Broadcast is not settlement: ask the chain whether the hash really landed. */
 async function settle(hash) {
   for (let i = 0; i < 45; i++) {
-    const r = await fetch("/api/tx/" + encodeURIComponent(hash)).then((x) => x.json()).catch(() => null);
+    const r = await fetch(`/api/tx/${encodeURIComponent(hash)}?net=${S.net}`).then((x) => x.json()).catch(() => null);
     if (r?.settled) return { block: r.blockNumber, ok: r.ok !== false };
     await new Promise((ok) => setTimeout(ok, 2000));
   }
@@ -648,6 +655,26 @@ $("copy")?.addEventListener("click", async (e) => {
   setTimeout(() => { btn.textContent = "Copy link"; }, 2500);
 });
 
+/**
+ * The network Nimiq Pay is on, told apart by block height: mainnet and testnet
+ * are tens of millions of blocks apart, so the nearest one is the right one.
+ * If either side can't answer, stay on the default rather than guess.
+ */
+async function whichNetwork() {
+  try {
+    const [mine, nets] = await Promise.all([
+      S.provider.getBlockNumber(),
+      fetch("/api/networks").then((r) => r.json()),
+    ]);
+    if (typeof mine !== "number") return S.net;
+    const known = Object.entries(nets).filter(([, n]) => typeof n.height === "number");
+    if (!known.length) return S.net;
+    return known.sort((a, b) => Math.abs(a[1].height - mine) - Math.abs(b[1].height - mine))[0][0];
+  } catch {
+    return S.net;
+  }
+}
+
 /* ---- boot ---------------------------------------------------------------- */
 async function boot() {
   render();
@@ -655,6 +682,7 @@ async function boot() {
     S.provider = await init({ timeout: 2500 });
     const accounts = await S.provider.listAccounts();
     if (Array.isArray(accounts) && accounts.length) S.address = accounts[0];
+    S.net = await whichNetwork();
   } catch {
     S.provider = null;   // not inside Nimiq Pay: show the real staked wallet instead
   }

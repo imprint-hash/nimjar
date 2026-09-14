@@ -9,7 +9,7 @@
 
 const escapeJson = (value) => JSON.stringify(value).replace(/</g, "\\u003c");
 
-export function renderApp({ demoAddress, networkId }) {
+export function renderApp({ net, demo }) {
   return `<!doctype html>
 <html lang="en">
 <head>
@@ -25,7 +25,7 @@ export function renderApp({ demoAddress, networkId }) {
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Mulish:wght@500;600;700;800;900&family=Fira+Mono:wght@500&display=swap">
 <link rel="stylesheet" href="/app.css">
-<script type="application/json" id="cfg">${escapeJson({ demoAddress, networkId })}</script>
+<script type="application/json" id="cfg">${escapeJson({ net, demo })}</script>
 <script type="module" src="/app.js"></script>
 </head>
 <body>
