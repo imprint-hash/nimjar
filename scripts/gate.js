@@ -13,7 +13,8 @@
  * asked. Nothing is trusted from the broadcast.
  */
 
-import { Chain, keyPairFromHex, signCreateStaker, signAddStake, MINIMUM_STAKE, nim } from "../src/chain.js";
+import { Chain, MINIMUM_STAKE, nim } from "../src/chain.js";
+import { keyPairFromHex, signCreateStaker, signAddStake } from "../src/sign.js";
 
 const RPC_URL = process.env.RPC_URL || process.env.SPOOL_RPC_URL;
 const PRIVATE_KEY = process.env.PRIVATE_KEY || process.env.SPOOL_PRIVATE_KEY;

@@ -18,10 +18,8 @@
  *   node --env-file=.env scripts/unstake.js withdraw        → step 3
  */
 
-import {
-  Chain, keyPairFromHex, nim, LUNA,
-  signSetActiveStake, signRetireStake, signRemoveStake,
-} from "../src/chain.js";
+import { Chain, nim, LUNA } from "../src/chain.js";
+import { keyPairFromHex, signSetActiveStake, signRetireStake, signRemoveStake } from "../src/sign.js";
 
 const RPC_URL = process.env.RPC_URL || process.env.SPOOL_RPC_URL;
 const PRIVATE_KEY = process.env.PRIVATE_KEY || process.env.SPOOL_PRIVATE_KEY;

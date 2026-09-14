@@ -469,6 +469,11 @@ function previewOnly() {
 function friendly(e) {
   const m = String(e?.message || e || "");
   if (/reject|cancel|denied|abort|closed|dismiss/i.test(m)) return "You cancelled in Nimiq Pay. Nothing was sent.";
+  // Nimiq Pay handles one transaction at a time and keeps an unconfirmed one
+  // "in progress" until it lands or expires (the network's validity window is
+  // 7,200 blocks, about two hours).
+  if (/in progress|pending/i.test(m)) return "Nimiq Pay is still busy with an earlier transaction. Close and reopen Nimiq Pay, or wait for it to finish, then try again.";
+  if (/timeout|timed out/i.test(m)) return "Nimiq Pay didn't answer in time. Nothing is lost: check Nimiq Pay's activity, then refresh this page before trying again.";
   return "Nimiq Pay couldn't send it: " + m;
 }
 

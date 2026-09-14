@@ -1,0 +1,10 @@
+{
+  "$schema": "https://openapi.vercel.sh/vercel.json",
+  "rewrites": [{ "source": "/(.*)", "destination": "/api/index" }],
+  "functions": {
+    "api/index.js": {
+      "maxDuration": 30,
+      "includeFiles": "{src/public/**,node_modules/@nimiq/mini-app-sdk/dist/index.js,node_modules/@nimiq/core/nodejs/**}"
+    }
+  }
+}

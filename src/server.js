@@ -19,7 +19,6 @@ import http from "node:http";
 import fs from "node:fs";
 import { fileURLToPath } from "node:url";
 import crypto from "node:crypto";
-import * as Nimiq from "@nimiq/core";
 import { Chain, nim } from "./chain.js";
 import { renderApp } from "./page.js";
 
@@ -237,7 +236,8 @@ const json = (res, code, body) => {
   res.end(JSON.stringify(body, (_, v) => (typeof v === "bigint" ? v.toString() : v)));
 };
 
-const server = http.createServer(async (req, res) => {
+/** The whole app as one request handler: a Node server locally, a function on Vercel. */
+export async function handler(req, res) {
   const url = new URL(req.url, `http://localhost:${PORT}`);
 
   try {
@@ -293,7 +293,7 @@ const server = http.createServer(async (req, res) => {
       // confirmation check that silently never matches is its own lie.
       let hash = decodeURIComponent(url.pathname.slice("/api/tx/".length)).trim().replace(/^0x/i, "");
       if (/^[0-9a-f]{65,4000}$/i.test(hash)) {
-        try { hash = Nimiq.Transaction.fromAny(hash).hash(); }
+        try { hash = (await import("@nimiq/core")).Transaction.fromAny(hash).hash(); }
         catch { return json(res, 400, { error: "that is not a transaction" }); }
       }
       if (!/^[0-9a-f]{64}$/i.test(hash)) return json(res, 400, { error: "that is not a transaction hash" });
@@ -313,20 +313,26 @@ const server = http.createServer(async (req, res) => {
     // a reason to show the visitor a blank screen.
     json(res, 502, { error: String(e?.message || e) });
   }
-});
+}
 
-server.listen(PORT, async () => {
-  console.log(`Listening on http://localhost:${PORT}`);
-  console.log(`  network : ${NETWORK_ID === 24 ? "mainnet" : `id ${NETWORK_ID}`} via ${RPC_URL}`);
-  console.log(`  reads only — every transaction is signed by the user's own wallet`);
-  try {
-    const o = await overview(DEMO_ADDRESS);
-    console.log(`  demo    : ${nim(BigInt(o.staked))} NIM staked, ${nim(BigInt(o.spendable))} NIM spendable`);
-  } catch (e) {
-    console.log(`  demo    : could not reach the chain — ${e.message}`);
-  }
-});
+// Listen only when run directly (npm start). On Vercel, api/index.js imports
+// the handler instead and the platform does the listening.
+const runDirectly = process.argv[1] && fileURLToPath(import.meta.url) === process.argv[1];
+if (runDirectly) {
+  const server = http.createServer(handler);
+  server.listen(PORT, async () => {
+    console.log(`Listening on http://localhost:${PORT}`);
+    console.log(`  network : ${NETWORK_ID === 24 ? "mainnet" : `id ${NETWORK_ID}`} via ${RPC_URL}`);
+    console.log(`  reads only — every transaction is signed by the user's own wallet`);
+    try {
+      const o = await overview(DEMO_ADDRESS);
+      console.log(`  demo    : ${nim(BigInt(o.staked))} NIM staked, ${nim(BigInt(o.spendable))} NIM spendable`);
+    } catch (e) {
+      console.log(`  demo    : could not reach the chain — ${e.message}`);
+    }
+  });
 
-const shutdown = () => server.close(() => process.exit(0));
-process.on("SIGINT", shutdown);
-process.on("SIGTERM", shutdown);
+  const shutdown = () => server.close(() => process.exit(0));
+  process.on("SIGINT", shutdown);
+  process.on("SIGTERM", shutdown);
+}

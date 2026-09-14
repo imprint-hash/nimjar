@@ -1,14 +1,11 @@
 /**
  * Chain access, and the staking transactions this app is built on.
  *
- * The key never leaves this process. Transactions are signed here and the node
- * is only ever handed something already signed.
+ * Reading only: signing lives in sign.js, used by the command-line scripts.
  *
  * Amounts are luna and always BigInt. 1 NIM = 100,000 luna. A staking app that
  * rounds is worse than one that refuses to run.
  */
-
-import * as Nimiq from "@nimiq/core";
 
 export const LUNA = 100_000n;
 
@@ -16,142 +13,6 @@ export const LUNA = 100_000n;
 export const MINIMUM_STAKE = 10_000_000n;
 
 export const nim = (luna) => (Number(luna) / 1e5).toFixed(5).replace(/\.?0+$/, "");
-
-export function keyPairFromHex(hex) {
-  return Nimiq.KeyPair.derive(Nimiq.PrivateKey.fromHex(hex));
-}
-
-const addr = (a) =>
-  a instanceof Nimiq.Address ? a : Nimiq.Address.fromUserFriendlyAddress(String(a));
-
-/**
- * Nimiq charges by transaction size, and a staking transaction is bigger than a
- * plain transfer. So the fee is measured rather than assumed: build once at zero
- * to learn the size, then rebuild paying one luna per byte.
- *
- * This matters more than it looks. A transaction whose fee is too low is
- * accepted by the node and then never relayed — it comes back with a hash and
- * silently never lands, which is indistinguishable from a payment that was lost.
- */
-function withMeasuredFee(build) {
-  const probe = build(0n);
-  const size = BigInt(probe.serializedSize);
-  return build(size);
-}
-
-/** First-time staking: creates the staker and delegates to a validator. */
-export function signCreateStaker({ keyPair, validator, valueLuna, validityStartHeight, networkId }) {
-  const tx = withMeasuredFee((fee) =>
-    Nimiq.TransactionBuilder.newCreateStaker(
-      keyPair.toAddress(),
-      addr(validator),
-      BigInt(valueLuna),
-      fee,
-      validityStartHeight,
-      networkId,
-    ),
-  );
-  tx.sign(keyPair);
-  return tx;
-}
-
-/** Adding to a stake that already exists. */
-export function signAddStake({ keyPair, staker, valueLuna, validityStartHeight, networkId }) {
-  const tx = withMeasuredFee((fee) =>
-    Nimiq.TransactionBuilder.newAddStake(
-      keyPair.toAddress(),
-      addr(staker ?? keyPair.toAddress()),
-      BigInt(valueLuna),
-      fee,
-      validityStartHeight,
-      networkId,
-    ),
-  );
-  tx.sign(keyPair);
-  return tx;
-}
-
-/**
- * Getting out, step one of three: deactivate.
- *
- * The parameter is what stays **working**, not what leaves. Pass 0 to take
- * everything out. Deactivated stake moves to `inactiveBalance` and is released
- * one epoch after the next election block: up to about a day.
- *
- * This step is reversible — call it again with a higher number to put stake
- * back to work. The next one is not.
- */
-export function signSetActiveStake({ keyPair, newActiveBalanceLuna, validityStartHeight, networkId }) {
-  const tx = withMeasuredFee((fee) =>
-    Nimiq.TransactionBuilder.newSetActiveStake(
-      keyPair.toAddress(),
-      BigInt(newActiveBalanceLuna),
-      fee,
-      validityStartHeight,
-      networkId,
-    ),
-  );
-  tx.sign(keyPair);
-  return tx;
-}
-
-/**
- * Getting out, step two of three. **Irreversible.**
- *
- * Retired stake can only ever be withdrawn — it can never go back to work. Only
- * released inactive balance can be retired, so this fails until the wait is up.
- */
-export function signRetireStake({ keyPair, valueLuna, validityStartHeight, networkId }) {
-  const tx = withMeasuredFee((fee) =>
-    Nimiq.TransactionBuilder.newRetireStake(
-      keyPair.toAddress(),
-      BigInt(valueLuna),
-      fee,
-      validityStartHeight,
-      networkId,
-    ),
-  );
-  tx.sign(keyPair);
-  return tx;
-}
-
-/**
- * Getting out, step three of three: the money lands back in the wallet.
- *
- * In this one transaction the staking contract is the sender, so the fee comes
- * out of the retired balance itself. Asking for the whole retired amount plus a
- * fee asks for more than exists: the node accepts it, then it never lands.
- * Found on mainnet on 10 Sep 2026 — it is exactly the silent failure this app
- * is built to catch. So the amount withdrawn is the retired balance minus fee.
- */
-export function signRemoveStake({ keyPair, retiredLuna, validityStartHeight, networkId }) {
-  const retired = BigInt(retiredLuna);
-  const build = (value, fee) =>
-    Nimiq.TransactionBuilder.newRemoveStake(
-      keyPair.toAddress(), value, fee, validityStartHeight, networkId,
-    );
-  const fee = BigInt(build(retired, 0n).serializedSize);
-  if (fee >= retired) throw new Error("retired balance is too small to cover the fee");
-  const tx = build(retired - fee, fee);
-  tx.sign(keyPair);
-  return tx;
-}
-
-/** Moving a stake to a different validator. */
-export function signUpdateStaker({ keyPair, newValidator, reactivateAllStake = true, validityStartHeight, networkId }) {
-  const tx = withMeasuredFee((fee) =>
-    Nimiq.TransactionBuilder.newUpdateStaker(
-      keyPair.toAddress(),
-      addr(newValidator),
-      reactivateAllStake,
-      fee,
-      validityStartHeight,
-      networkId,
-    ),
-  );
-  tx.sign(keyPair);
-  return tx;
-}
 
 /**
  * A JSON-RPC node. Reads and broadcasts only.
@@ -260,6 +121,10 @@ export class Chain {
     const txs = [...own, ...more.flat()]
       .filter((t) => (seen.has(t.hash) ? false : seen.add(t.hash)))
       .sort((a, b) => b.blockNumber - a.blockNumber);
+    // Loaded only here, and only when there is something to decode, so the
+    // rest of the server never waits on (or fails with) a 28 MB wasm library.
+    const needsCore = txs.some((t) => t.recipientData && t.toType === 3);
+    const Nimiq = needsCore ? await import("@nimiq/core") : null;
     const out = [];
     for (const t of txs) {
       let plain = null;
