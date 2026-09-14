@@ -9,7 +9,7 @@ NimJar is a mini app for [Nimiq Pay](https://www.nimiq.com/). Nimiq Pay can hold
 ## What makes it different
 
 - **One tap in, without leaving Nimiq Pay.** Pick an amount, tap Stake, confirm in Nimiq Pay.
-- **The validator is picked for you.** NimJar only considers validators that are active, not jailed and not flagged as inactive, and suggests the one most stakers already trust. You never have to judge a list of addresses.
+- **The validator is picked for you.** NimJar reads Nimiq's official validator list (the one the Nimiq Wallet uses) and only suggests pools that pay their stakers, charge 10% or less, have a good trust score and hold under a tenth of all stake. Each wallet gets its own pick from that set, so stake spreads across many pools instead of piling onto the biggest one. You see the pool's name and fee, never a list of addresses to judge. This matters: the chain alone can't tell you whether a validator pays stakers at all, and some large ones don't.
 - **The whole way out.** Getting out of staking is three separate transactions with a wait of up to a day in the middle, and one of them can't be undone. NimJar shows where you are, counts down the wait, and makes the permanent step impossible to tap by accident: you tick a box first.
 - **It never holds your money.** The server only reads the blockchain. Every action is signed by your own wallet, on your own phone, through Nimiq Pay's confirmation sheet.
 - **It checks, instead of trusting.** After every action NimJar asks the chain whether the transaction really landed. Failed transactions are shown as failed, never as done.
@@ -25,7 +25,7 @@ We found these by doing it with real money, on mainnet and inside Nimiq Pay. Eac
 [b7a5bc76…](https://test.nimiq.watch/#b7a5bc76d1a755e10535311927e502b7ab58f4166fe4ba5535e53cd3a894db4b),
 [53da8349…](https://test.nimiq.watch/#53da8349c36bd9c24ce45628e412fa87fb23606bdcab8209b7408663a42351a1),
 [4063c266…](https://test.nimiq.watch/#4063c266dcc51e33f21be869ac96d2a973255836872c4bf28277b622c090e67d).
-The whole wait is up to about a day.
+The whole wait is up to about a day. With the rule fixed, the same wallet's next attempt, sent from NimJar inside Nimiq Pay, [went through](https://test.nimiq.watch/#9df81d3393c6d3a19e267a13485a2571c6413de1b9146b37f71f2832f2c18a5e).
 
 **3. The withdrawal fee comes out of the stake itself.** In the last step the staking contract is the sender, so asking for the whole balance plus a fee asks for more than exists. The node **accepts it and it never lands**: no error, a valid-looking hash, nothing on chain. Withdrawing the balance minus the fee lands at once.
 

@@ -18,6 +18,7 @@
 import http from "node:http";
 import fs from "node:fs";
 import { fileURLToPath } from "node:url";
+import crypto from "node:crypto";
 import { Chain, nim } from "./chain.js";
 import { renderApp } from "./page.js";
 
@@ -79,30 +80,103 @@ try {
 } catch { /* absent: /sdk.js answers with a stub and the page still loads */ }
 
 /**
- * Validators, ranked so the top one is a defensible default.
- *
- * Nobody can read a list of 37 hex addresses and judge it, so the app chooses —
- * but it shows why, in facts anyone can check, and it never hides the list.
- * Anything jailed, retired or flagged inactive is not a candidate at all.
+ * Validators the chain says are healthy: not retired, not jailed, not flagged
+ * inactive. Necessary, but not enough to recommend one.
  */
 async function healthyValidators() {
   const all = await chain.validators();
   return all
     .filter((v) => !v.retired && v.inactivityFlag == null && v.jailedFrom == null)
-    .map((v) => ({
-      address: v.address,
-      stakers: v.numStakers ?? 0,
-      balance: String(v.balance ?? 0),
-    }))
-    .sort((a, b) => b.stakers - a.stakers);
+    .map((v) => ({ address: v.address, stakers: v.numStakers ?? 0 }));
+}
+
+/**
+ * Nimiq's own validator directory: the list the Nimiq Wallet uses, with each
+ * pool's name, fee, payout type and trust score.
+ *
+ * The chain cannot tell you the one thing a staker needs most: whether the
+ * validator passes rewards on at all. The protocol pays the validator; paying
+ * stakers is the pool's promise. On 14 Sep 2026 two large mainnet validators
+ * were listed with payout type "none" — stake there earns nothing. Picking by
+ * chain data alone could send someone's NIM to one of them.
+ */
+const DIRECTORY_URL = process.env.VALIDATORS_API
+  || (NETWORK_ID === 24 ? "https://validators-api-main.je-cf9.workers.dev" : "https://validators-api-test.je-cf9.workers.dev");
+let directory = { at: 0, list: [] };
+
+async function validatorDirectory() {
+  if (Date.now() - directory.at < 10 * 60_000) return directory.list;
+  try {
+    const r = await fetch(DIRECTORY_URL + "/api/v1/validators", { signal: AbortSignal.timeout(8000) });
+    if (!r.ok) throw new Error(`answered ${r.status}`);
+    const all = await r.json();
+    directory = {
+      at: Date.now(),
+      list: all.map((v) => ({
+        address: v.address,
+        name: typeof v.name === "string" ? v.name.slice(0, 40) : null,
+        fee: v.fee == null ? null : Number(v.fee),
+        payoutType: v.payoutType ?? null,
+        score: typeof v.score?.total === "number" ? v.score.total : null,
+        dominance: typeof v.dominanceRatio === "number" && v.dominanceRatio >= 0 ? v.dominanceRatio : null,
+        color: /^#[0-9a-f]{6}$/i.test(v.accentColor ?? "") ? v.accentColor : null,
+      })),
+    };
+  } catch (e) {
+    console.log(`[validators] directory unavailable (${e.message}); retrying in a minute`);
+    directory.at = Date.now() - 9 * 60_000;
+  }
+  return directory.list;
+}
+
+const compact = (a) => String(a).replace(/\s+/g, "").toUpperCase();
+
+/**
+ * Which validator to suggest to this person.
+ *
+ * Only pools that pay their stakers, charge 10% or less, hold under a tenth of
+ * all stake, and — where Nimiq has scored them — score well. Among those, each
+ * wallet gets its own pick, the same one every time, so NimJar spreads stake
+ * across many pools instead of feeding the biggest one, which is what keeps
+ * a proof-of-stake network decentralised.
+ *
+ * If the directory is unreachable, fall back to the busiest healthy validator
+ * and say so (vetted: false), rather than pretend it was checked.
+ */
+function pickValidator(address, healthy, dir) {
+  const onChain = new Map(healthy.map((v) => [compact(v.address), v]));
+  const pools = dir
+    .filter((v) => onChain.has(compact(v.address)))
+    .filter((v) => v.payoutType === "restake" || v.payoutType === "direct")
+    .filter((v) => v.fee != null && v.fee <= 0.1)
+    .filter((v) => v.dominance == null || v.dominance < 0.1);
+  const scored = pools.filter((v) => v.score != null && v.score >= 0.95);
+  const list = (scored.length ? scored : pools).sort((a, b) => compact(a.address).localeCompare(compact(b.address)));
+
+  if (!list.length) {
+    const busiest = [...healthy].sort((a, b) => b.stakers - a.stakers)[0];
+    return busiest ? { ...busiest, vetted: false } : null;
+  }
+  const n = crypto.createHash("sha256").update(compact(address)).digest().readUInt32BE(0);
+  const v = list[n % list.length];
+  return { ...v, stakers: onChain.get(compact(v.address)).stakers, vetted: true };
+}
+
+/** What we know about a validator someone is already staking with. */
+function describe(address, healthy, dir) {
+  if (!address) return null;
+  const chainInfo = healthy.find((v) => compact(v.address) === compact(address));
+  const info = dir.find((v) => compact(v.address) === compact(address));
+  return { address, stakers: chainInfo?.stakers ?? null, healthy: !!chainInfo, ...(info ?? {}) };
 }
 
 /** Everything one screen needs, in one request. */
 async function overview(address) {
-  const [pay, staker, validators, height] = await Promise.all([
+  const [pay, staker, healthy, dir, height] = await Promise.all([
     chain.payBalance(address),
     chain.staker(address),
     healthyValidators(),
+    validatorDirectory(),
     chain.height(),
   ]);
 
@@ -152,8 +226,8 @@ async function overview(address) {
     isStaking: staked > 0n || leavingIn > 0n || leavingOut > 0n,
     /** Which of the three steps out the money is on, if any. */
     leaving: leavingOut > 0n ? "ready" : leavingIn > 0n ? (secondsLeft > 0 ? "waiting" : "releasable") : null,
-    validators: validators.slice(0, 12),
-    suggested: validators[0] ?? null,
+    suggested: pickValidator(address, healthy, dir),
+    current: describe(staker?.delegation, healthy, dir),
   };
 }
 

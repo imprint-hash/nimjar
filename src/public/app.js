@@ -73,7 +73,9 @@ function parseNim(str) {
   if (!m) return null;
   return BigInt(m[1]) * LUNA + BigInt((m[2] || "").padEnd(5, "0"));
 }
-const perWeek = (luna) => (Number(BigInt(luna)) / 1e5) * YEARLY / 52;
+/* The network's rate less the pool's fee: what actually reaches the staker. */
+let RATE = YEARLY;
+const perWeek = (luna) => (Number(BigInt(luna)) / 1e5) * RATE / 52;
 const weekly = (luna) => {
   const w = perWeek(luna);
   return w >= 100 ? Math.floor(w).toLocaleString("en-GB") : w.toFixed(2);
@@ -176,6 +178,8 @@ async function refresh() {
     if (!r.ok) throw new Error(body.error || "the node did not answer");
     S.data = body;
     S.error = null;
+    const v = body.isStaking ? body.current : body.suggested;
+    RATE = YEARLY * (1 - (v?.fee != null && v.fee >= 0 && v.fee < 1 ? v.fee : 0));
   } catch (e) {
     S.error = String(e?.message || e);
   }
@@ -250,16 +254,23 @@ function card(w) {
   </section>`;
 }
 
+const PAYOUT = { restake: "rewards added to your stake", direct: "rewards paid to your wallet" };
 function validatorCard(w) {
-  const d = S.data;
-  const addr = w.isStaking ? d.delegation : d.suggested?.address;
-  if (!addr) return "";
-  const known = d.validators.find((v) => compact(v.address) === compact(addr));
-  const facts = [known ? `${known.stakers} stakers` : null, w.isStaking ? "your validator" : "recommended"].filter(Boolean).join(" · ");
-  return `<div class="val row">
-    <div class="dot" style="background:var(--green-soft)">${ic("shield")}</div>
-    <div class="t"><b class="mono">${esc(shortAddr(addr))}</b><span>${esc(facts)}</span></div>
-  </div>`;
+  const v = w.isStaking ? S.data.current : S.data.suggested;
+  if (!v) return "";
+  const pct = v.fee != null ? `${+(v.fee * 100).toFixed(2)}% fee` : null;
+  const facts = [pct, PAYOUT[v.payoutType] ?? null, v.stakers != null ? `${v.stakers} stakers` : null].filter(Boolean).join(" · ");
+  const why = w.isStaking ? "Your validator"
+    : v.vetted ? "Picked for you from Nimiq's validator list: it pays its stakers, has a good trust score and isn't too big."
+    : "Picked for you: the busiest healthy validator right now.";
+  const warn = w.isStaking && v.payoutType === "none"
+    ? `<p class="hint" style="color:var(--red-text)">This validator doesn't pay rewards to its stakers.</p>` : "";
+  const dot = /^#[0-9a-f]{6}$/i.test(v.color ?? "") ? `background:${v.color};color:#fff` : "background:var(--green-soft)";
+  return `<div class="val"><div class="row">
+      <div class="dot" style="${dot}">${ic("shield")}</div>
+      <div class="t"><b>${v.name ? esc(v.name) : `<span class="mono">${esc(shortAddr(v.address))}</span>`}</b><span>${esc(facts || shortAddr(v.address))}</span></div>
+    </div>
+    <p class="hint" style="margin-top:10px">${why}</p>${warn}</div>`;
 }
 
 function form(w) {
@@ -322,9 +333,9 @@ function qa(w) {
   const example = w.staked > 0n ? w.staked : 600n * LUNA;
   return [
     ["Is my NIM safe?", "It stays yours. Staked NIM sits in Nimiq's staking contract under your own address, and only your wallet can take it out. NimJar can't move it: every step needs your OK in Nimiq Pay."],
-    ["How much will I earn?", `About 15% a year, paid by the network. ${nim(example)} NIM earns about ${weekly(example)} NIM a week. The rate moves a little as more people stake.`],
+    ["How much will I earn?", `About 15% a year from the network, minus the pool's fee. ${nim(example)} NIM earns about ${weekly(example)} NIM a week. The rate moves a little as more people stake.`],
     ["Why do I have to wait?", "For safety, the network holds unstaked NIM for a while: until its next 12-hour checkpoint, then one more 12 hours. So up to about a day. It stops earning while it waits, then it's ready to withdraw."],
-    ["What's a validator?", "A computer that helps run the Nimiq network. Your stake backs one, and it shares the rewards with you. NimJar picks a busy, healthy one for you."],
+    ["What's a validator?", "A computer that helps run the Nimiq network, usually run by a staking pool. Your stake backs one, and it passes the rewards on to you, minus a small fee. NimJar picks one for you from Nimiq's official validator list: it has to pay its stakers and have a good trust score, and different people get different pools so no single one gets too big."],
     ["Why two taps to withdraw?", "The first tap confirms you're done staking. It's permanent, so it gets its own tap. The second sends the NIM back to your wallet."],
   ];
 }
