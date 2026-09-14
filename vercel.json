@@ -1,6 +1,5 @@
 {
   "$schema": "https://openapi.vercel.sh/vercel.json",
-  "rewrites": [{ "source": "/((?!app\\.js$|app\\.css$|icon\\.svg$|sdk\\.js$).*)", "destination": "/api/index" }],
   "headers": [
     {
       "source": "/(app\\.js|app\\.css|icon\\.svg|sdk\\.js)",
@@ -9,8 +8,5 @@
         { "key": "Cache-Control", "value": "public, max-age=0, must-revalidate" }
       ]
     }
-  ],
-  "functions": {
-    "api/index.js": { "maxDuration": 30 }
-  }
+  ]
 }
