@@ -341,7 +341,7 @@ function qa(w) {
     ["How much will I earn?", `About 15% a year from the network, minus the pool's fee. ${nim(example)} NIM earns about ${weekly(example)} NIM a week. The rate moves a little as more people stake.`],
     ["Why do I have to wait?", "For safety, the network holds unstaked NIM for a while: until its next 12-hour checkpoint, then one more 12 hours. So up to about a day. It stops earning while it waits, then it's ready to withdraw."],
     ["What's a validator?", "A computer that helps run the Nimiq network, usually run by a staking pool. Your stake backs one, and it passes the rewards on to you, minus a small fee. NimJar picks one for you from Nimiq's official validator list: it has to pay its stakers and have a good trust score, and different people get different pools so no single one gets too big."],
-    ["Why two taps to withdraw?", "The first tap confirms you're done staking. It's permanent, so it gets its own tap. The second sends the NIM back to your wallet."],
+    ["Why confirm before withdrawing?", "Confirming is the one step you can't undo: after it, those NIM can't go back to staking. So it gets its own tap. Then Withdraw sends them to your wallet."],
   ];
 }
 function ask(w) {
