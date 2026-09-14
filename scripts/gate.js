@@ -15,12 +15,12 @@
 
 import { Chain, keyPairFromHex, signCreateStaker, signAddStake, MINIMUM_STAKE, nim } from "../src/chain.js";
 
-const RPC_URL = process.env.SPOOL_RPC_URL;
-const PRIVATE_KEY = process.env.SPOOL_PRIVATE_KEY;
-const NETWORK_ID = Number(process.env.SPOOL_NETWORK_ID || 24);
+const RPC_URL = process.env.RPC_URL || process.env.SPOOL_RPC_URL;
+const PRIVATE_KEY = process.env.PRIVATE_KEY || process.env.SPOOL_PRIVATE_KEY;
+const NETWORK_ID = Number(process.env.NETWORK_ID || process.env.SPOOL_NETWORK_ID || 24);
 
 if (!RPC_URL || !PRIVATE_KEY) {
-  console.error("SPOOL_RPC_URL and SPOOL_PRIVATE_KEY are required.");
+  console.error("RPC_URL and PRIVATE_KEY are required (in .env).");
   process.exit(1);
 }
 

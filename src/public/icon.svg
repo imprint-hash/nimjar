@@ -1,0 +1,29 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="512" height="512" viewBox="-4 -4 108 108">
+  <defs>
+    <radialGradient id="ibg" cx="70%" cy="85%" r="100%"><stop offset="0" stop-color="#2E3572"/><stop offset="1" stop-color="#1F2348"/></radialGradient>
+    <radialGradient id="ihead" cx="36%" cy="30%" r="75%"><stop offset="0" stop-color="#FFF7B8"/><stop offset=".45" stop-color="#FBDE45"/><stop offset="1" stop-color="#E8A912"/></radialGradient>
+    <radialGradient id="ileaf" cx="35%" cy="35%" r="80%"><stop offset="0" stop-color="#C9F57A"/><stop offset="1" stop-color="#4DB33A"/></radialGradient>
+    <linearGradient id="ishirt" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#2E9BE6"/><stop offset="1" stop-color="#0569B0"/></linearGradient>
+    <filter id="isoft" x="-50%" y="-50%" width="200%" height="200%"><feGaussianBlur stdDeviation="2.2"/></filter>
+    <clipPath id="iclip"><polygon points="25,6.7 75,6.7 100,50 75,93.3 25,93.3 0,50"/></clipPath>
+  </defs>
+  <polygon points="25,6.7 75,6.7 100,50 75,93.3 25,93.3 0,50" fill="url(#ibg)" stroke="#E9B213" stroke-width="7" stroke-linejoin="round"/>
+  <g clip-path="url(#iclip)"><g transform="translate(50 19) scale(.9) translate(-50 -24)"><g class="m-hop">
+    <path d="M22 110c0-19 12-29 28-29s28 10 28 29z" fill="url(#ishirt)"/>
+    <polygon points="50,89 55.5,92.2 55.5,98.6 50,101.8 44.5,98.6 44.5,92.2" fill="#E9B213"/>
+    <ellipse cx="50" cy="80" rx="21" ry="4.5" fill="#0B0D26" opacity=".5" filter="url(#isoft)"/>
+    <g class="m-head">
+      <path d="M50 24c19 0 30 13 30 29 0 15-12 24-30 24S20 68 20 53c0-16 11-29 30-29z" fill="url(#ihead)"/>
+      <ellipse cx="39" cy="35" rx="9" ry="5" fill="#fff" opacity=".55" filter="url(#isoft)"/>
+      <ellipse cx="31" cy="60" rx="6.5" ry="4.5" fill="#F59E3B" opacity=".45" filter="url(#isoft)"/>
+      <ellipse cx="69" cy="60" rx="6.5" ry="4.5" fill="#F59E3B" opacity=".45" filter="url(#isoft)"/>
+      <g class="m-eyes"><ellipse cx="40.5" cy="53" rx="3.3" ry="3.8" fill="#1F2348"/><circle cx="41.6" cy="51.6" r="1.1" fill="#fff"/><ellipse cx="59.5" cy="53" rx="3.3" ry="3.8" fill="#1F2348"/><circle cx="60.6" cy="51.6" r="1.1" fill="#fff"/></g><path d="M45.5 61.5q4.5 4 9 0" fill="none" stroke="#1F2348" stroke-width="2.4" stroke-linecap="round"/>
+    </g>
+  </g></g></g>
+  <g transform="translate(50 19) scale(.9) translate(-50 -24)"><g class="m-hop"><g class="m-head"><g class="m-leaf">
+    <path d="M52 27c1-10 13-17 24-12-2 11-14 17-24 12z" fill="url(#ileaf)" stroke="#2F7D24" stroke-width="1" stroke-opacity=".35"/>
+    <path d="M54 25.5c5-3.5 11-6.5 17-8" fill="none" stroke="#3E9B2E" stroke-width="1.6" stroke-linecap="round" opacity=".7"/>
+    <path d="M51 28.5c-.3-2.5.2-4.5 1.5-6" fill="none" stroke="#6B4A1E" stroke-width="2" stroke-linecap="round"/>
+  </g></g></g></g>
+  
+</svg>

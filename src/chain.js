@@ -76,7 +76,7 @@ export function signAddStake({ keyPair, staker, valueLuna, validityStartHeight, 
  *
  * The parameter is what stays **working**, not what leaves. Pass 0 to take
  * everything out. Deactivated stake moves to `inactiveBalance` and is released
- * about twelve hours later, on the next election block.
+ * one epoch after the next election block: up to about a day.
  *
  * This step is reversible — call it again with a higher number to put stake
  * back to work. The next one is not.
@@ -181,7 +181,8 @@ export class Chain {
   }
 
   height() { return this.call("getBlockNumber"); }
-  policy() { return this.call("getPolicyConstants"); }
+  policy() { return (this._policy ??= this.call("getPolicyConstants").catch((e) => { this._policy = null; throw e; })); }
+  validator(address) { return this.call("getValidatorByAddress", [String(address)]).catch(() => null); }
   validators() { return this.call("getActiveValidators"); }
 
   async balance(address) {
@@ -261,18 +262,34 @@ export class Chain {
       .sort((a, b) => b.blockNumber - a.blockNumber);
     const out = [];
     for (const t of txs) {
-      if (!t.recipientData) continue;
-      let plain;
-      try { plain = Nimiq.StakingContract.dataToPlain(Buffer.from(t.recipientData, "hex")); }
-      catch { continue; }          // not a staking transaction
+      let plain = null;
+      if (t.recipientData && t.toType === 3) {
+        try { plain = Nimiq.StakingContract.dataToPlain(Buffer.from(t.recipientData, "hex")); }
+        catch { plain = null; }
+      } else if (t.fromType === 3 && t.senderData === "01") {
+        // Money coming back out: the staking contract is the sender and the
+        // action sits in the sender data (1 = remove stake), not the recipient
+        // data. Read only the recipient side and the withdrawal — the step
+        // that matters most — never shows up.
+        plain = { type: "remove-stake" };
+      }
+      if (!plain) continue;        // not a staking transaction
       out.push({
         type: plain.type,
         hash: t.hash,
         blockNumber: t.blockNumber,
         timestamp: t.timestamp,
         value: String(t.value ?? 0),
+        // A transaction can land in a block and still fail: it is on chain,
+        // with a hash, and changed nothing. Found on testnet, 12 Sep 2026: three
+        // retire-stake attempts sent before the stake was released all failed.
+        // Listing those as done would be the exact lie this app exists to stop.
+        ok: t.executionResult !== false,
         delegation: plain.delegation ?? null,
         newActiveBalance: plain.newActiveBalance ?? null,
+        // A retire moves stake without a value on the transaction itself; the
+        // amount lives in its data. Without this the list would say "0 NIM".
+        retireStake: plain.retireStake != null ? String(plain.retireStake) : null,
       });
     }
     return out;

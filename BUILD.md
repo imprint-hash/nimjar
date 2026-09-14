@@ -103,7 +103,10 @@ signed by the user's own wallet, on their own phone. We never hold a key.
 - [ ] Getting out: retire, then the wait, then remove
 - [ ] Device identifier, if it earns its place
 
-## 4. Design pass
+## 4. Design pass ✅ 14 Sep
+
+NimJar: the Geex Arts "Wallet" reference redrawn in Nimiq's colours and fonts,
+with a mascot in Nimiq's hexagon whose mood follows the money.
 
 Only once it works. Sketch: https://claude.ai/code/artifact/5246978e-0c08-43e5-94a9-fcf04143d440
 
@@ -138,7 +141,7 @@ RPC          https://rpc.nimiqwatch.com
 Explorer     https://nimiq.watch/#<txhash>
 Units        1 NIM = 100,000 luna. Integers only, never floats
 Minimum      100 NIM
-Getting out  two transactions, 12 hours to 4 days between them
+Getting out  three transactions; released inactiveFrom + one epoch + 1 (up to ~a day)
 Reward       ~15% a year, paid per validator, not auto-compounded
 ```
 

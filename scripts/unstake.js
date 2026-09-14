@@ -7,7 +7,7 @@
  * expensive.
  *
  *   1. setActiveStake   deactivate — moves active balance to "inactive"
- *      ...wait...       until the release block, about twelve hours
+ *      ...wait...       until the release block, up to about a day
  *   2. retireStake      IRREVERSIBLE. Retired stake can only be withdrawn
  *   3. removeStake      the money lands back in the wallet
  *
@@ -23,9 +23,9 @@ import {
   signSetActiveStake, signRetireStake, signRemoveStake,
 } from "../src/chain.js";
 
-const RPC_URL = process.env.SPOOL_RPC_URL;
-const PRIVATE_KEY = process.env.SPOOL_PRIVATE_KEY;
-const NETWORK_ID = Number(process.env.SPOOL_NETWORK_ID || 24);
+const RPC_URL = process.env.RPC_URL || process.env.SPOOL_RPC_URL;
+const PRIVATE_KEY = process.env.PRIVATE_KEY || process.env.SPOOL_PRIVATE_KEY;
+const NETWORK_ID = Number(process.env.NETWORK_ID || process.env.SPOOL_NETWORK_ID || 24);
 
 const [, , command = "status", ...rest] = process.argv;
 const line = (k, v) => console.log(k.padEnd(16) + ": " + v);
@@ -52,11 +52,12 @@ async function main() {
   const active = BigInt(staker.balance ?? 0);
   const inactive = BigInt(staker.inactiveBalance ?? 0);
   const retired = BigInt(staker.retiredBalance ?? 0);
-  // The type definitions promise an `inactiveRelease` field. This node does not
-  // send one, so reading it gives undefined and every wait looks already over.
-  // `inactiveFrom` is what actually arrives: the future block at which the
-  // stake becomes inactive, which is the next election block, not now.
-  const release = staker.inactiveRelease ?? staker.inactiveFrom ?? null;
+  // Stake goes inactive at `inactiveFrom` (the next election block) and is only
+  // released one full epoch after that: Policy::block_after_collateral_lockup,
+  // inactiveFrom + blocksPerEpoch + 1 (Nimiq's staker.rs). Retiring before then
+  // lands on chain and fails. The server applies the same rule, plus jail.
+  const { blocksPerEpoch } = await chain.policy();
+  const release = staker.inactiveFrom != null ? staker.inactiveFrom + blocksPerEpoch + 1 : null;
 
   line("wallet", me);
   line("block", height.toLocaleString("en-GB"));
@@ -107,7 +108,7 @@ async function main() {
       keyPair, newActiveBalanceLuna: keepActive,
       validityStartHeight: height, networkId: NETWORK_ID,
     });
-    return send(tx, "Deactivated. It is released in about twelve hours, then `retire --yes`.");
+    return send(tx, "Deactivated. It is released within about a day, then `retire --yes`.");
   }
 
   if (command === "retire") {

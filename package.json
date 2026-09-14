@@ -1,15 +1,20 @@
 {
-  "name": "nimiq-staking-miniapp",
-  "version": "0.1.0",
-  "description": "One-tap NIM staking inside Nimiq Pay.",
+  "name": "nimjar",
+  "version": "1.0.0",
+  "description": "Stake NIM in one tap inside Nimiq Pay, and get it all back out, step by step.",
   "type": "module",
   "license": "MIT",
   "scripts": {
+    "start": "node src/server.js",
+    "start:testnet": "RPC_URL=https://rpc.testnet.nimiqwatch.com NETWORK_ID=5 node src/server.js",
     "gate": "node --env-file=.env scripts/gate.js",
-    "start": "node --env-file-if-exists=.env src/server.js"
+    "unstake": "node --env-file=.env scripts/unstake.js"
   },
   "dependencies": {
     "@nimiq/core": "^2.20.0",
     "@nimiq/mini-app-sdk": "^0.1.0"
+  },
+  "engines": {
+    "node": ">=20.6"
   }
 }

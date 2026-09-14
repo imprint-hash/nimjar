@@ -8,7 +8,11 @@
  * to steal and nothing to trust us with. A staking app that holds your money is
  * a different, much worse product.
  *
- *   npm start        → http://localhost:8080
+ *   npm start           → http://localhost:8080, mainnet
+ *   npm run start:testnet
+ *
+ * It is started without .env on purpose. That file holds a key for the
+ * command-line scripts; the server has no use for it, so it never sees it.
  */
 
 import http from "node:http";
@@ -18,8 +22,8 @@ import { Chain, nim } from "./chain.js";
 import { renderApp } from "./page.js";
 
 const PORT = Number(process.env.PORT || 8080);
-const RPC_URL = process.env.SPOOL_RPC_URL || "https://rpc.nimiqwatch.com";
-const NETWORK_ID = Number(process.env.SPOOL_NETWORK_ID || 24);
+const RPC_URL = process.env.RPC_URL || "https://rpc.nimiqwatch.com";
+const NETWORK_ID = Number(process.env.NETWORK_ID || 24);
 
 /**
  * A wallet we know is staking, shown when the app is opened outside Nimiq Pay —
@@ -29,6 +33,42 @@ const NETWORK_ID = Number(process.env.SPOOL_NETWORK_ID || 24);
 const DEMO_ADDRESS = process.env.DEMO_ADDRESS || "NQ19 4DVG ARRM PVLY 45HC MRY7 5Y9U 31EG JF9U";
 
 const chain = new Chain({ url: RPC_URL });
+
+/**
+ * Amounts this small are treated as nothing. If a few luna are ever left in the
+ * staking contract, the app must not sit on "withdraw 0.002 NIM" forever for an
+ * amount that costs more than itself to move. The page applies the same rule.
+ */
+const DUST = 1000n;
+
+/** A Nimiq address, with or without the spaces. Anything else never reaches the node. */
+const ADDRESS = /^NQ[0-9]{2}(?: ?[0-9A-Z]{4}){8}$/i;
+
+/** The files the page loads. Read once at start: there is nothing else on disk to serve. */
+const PUBLIC = new URL("./public/", import.meta.url);
+const STATIC = Object.fromEntries(
+  [["/app.js", "text/javascript"], ["/app.css", "text/css"], ["/icon.svg", "image/svg+xml"]]
+    .map(([route, type]) => [route, { type: `${type}; charset=utf-8`, body: fs.readFileSync(new URL("." + route, PUBLIC)) }]),
+);
+
+/**
+ * Only this site, Google Fonts and nothing else. Inline scripts are refused, so
+ * even a value that slipped past escaping could not run.
+ */
+const SECURITY = {
+  "content-security-policy": [
+    "default-src 'self'",
+    "script-src 'self'",
+    "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com",
+    "font-src https://fonts.gstatic.com",
+    "img-src 'self' data:",
+    "connect-src 'self'",
+    "base-uri 'none'",
+    "form-action 'none'",
+  ].join("; "),
+  "x-content-type-options": "nosniff",
+  "referrer-policy": "no-referrer",
+};
 
 /** The SDK entry is 722 bytes of browser ESM with no imports, so it is served as-is. */
 let SDK_SOURCE = null;
@@ -69,13 +109,29 @@ async function overview(address) {
   const staked = BigInt(staker?.balance ?? 0);
   const inactive = BigInt(staker?.inactiveBalance ?? 0);
   const retired = BigInt(staker?.retiredBalance ?? 0);
+  const leavingIn = inactive > DUST ? inactive : 0n;
+  const leavingOut = retired > DUST ? retired : 0n;
 
-  // The type definitions promise `inactiveRelease`. This node never sends one,
-  // so trusting it means every wait looks like it is already over. What does
-  // arrive is `inactiveFrom` — a future block, the next election block.
-  const releaseAt = staker?.inactiveRelease ?? staker?.inactiveFrom ?? null;
+  // When unstaked NIM can take the next step out. Read from Nimiq's own source
+  // (staker.rs, is_inactive_stake_released), because the obvious reading is
+  // wrong: stake goes inactive at the next election block (`inactiveFrom`), and
+  // is only released one full epoch after that, at
+  // Policy::block_after_collateral_lockup(inactiveFrom) = inactiveFrom + epoch + 1.
+  // Also never while the validator it was delegated to sits in jail.
+  //
+  // The first version of this app used `inactiveFrom` alone. It said "ready"
+  // twelve hours early, and three real attempts to confirm a withdrawal on
+  // testnet landed on chain and failed. The whole wait is up to about a day.
+  let releaseAt = null;
+  if (staker?.inactiveFrom != null && inactive > 0n) {
+    const policy = await chain.policy();
+    releaseAt = staker.inactiveFrom + policy.blocksPerEpoch + 1;
+    const v = staker.delegation ? await chain.validator(staker.delegation) : null;
+    if (v?.jailedFrom != null) {
+      releaseAt = Math.max(releaseAt, v.jailedFrom + policy.blocksPerEpoch * policy.jailEpochs + 1);
+    }
+  }
 
-  // One second per block, so the gap converts straight into a wait.
   const secondsLeft = releaseAt && height < releaseAt ? releaseAt - height : 0;
 
   return {
@@ -93,16 +149,16 @@ async function overview(address) {
     releaseAt,
     secondsLeft,
     delegation: staker?.delegation ?? null,
-    isStaking: staked > 0n || inactive > 0n || retired > 0n,
+    isStaking: staked > 0n || leavingIn > 0n || leavingOut > 0n,
     /** Which of the three steps out the money is on, if any. */
-    leaving: retired > 0n ? "ready" : inactive > 0n ? (secondsLeft > 0 ? "waiting" : "releasable") : null,
+    leaving: leavingOut > 0n ? "ready" : leavingIn > 0n ? (secondsLeft > 0 ? "waiting" : "releasable") : null,
     validators: validators.slice(0, 12),
     suggested: validators[0] ?? null,
   };
 }
 
 const json = (res, code, body) => {
-  res.writeHead(code, { "content-type": "application/json", "cache-control": "no-store" });
+  res.writeHead(code, { ...SECURITY, "content-type": "application/json", "cache-control": "no-store" });
   res.end(JSON.stringify(body, (_, v) => (typeof v === "bigint" ? v.toString() : v)));
 };
 
@@ -111,12 +167,18 @@ const server = http.createServer(async (req, res) => {
 
   try {
     if (req.method === "GET" && url.pathname === "/") {
-      res.writeHead(200, { "content-type": "text/html; charset=utf-8" });
+      res.writeHead(200, { ...SECURITY, "content-type": "text/html; charset=utf-8", "cache-control": "no-cache" });
       return res.end(renderApp({ demoAddress: DEMO_ADDRESS, networkId: NETWORK_ID }));
     }
 
+    if (req.method === "GET" && STATIC[url.pathname]) {
+      const file = STATIC[url.pathname];
+      res.writeHead(200, { ...SECURITY, "content-type": file.type, "cache-control": "no-cache" });
+      return res.end(file.body);
+    }
+
     if (req.method === "GET" && url.pathname === "/sdk.js") {
-      res.writeHead(200, { "content-type": "text/javascript; charset=utf-8" });
+      res.writeHead(200, { ...SECURITY, "content-type": "text/javascript; charset=utf-8" });
       if (SDK_SOURCE) return res.end(SDK_SOURCE);
       return res.end(
         `const absent=(n)=>()=>Promise.reject(new Error(n+" needs @nimiq/mini-app-sdk"));
@@ -124,8 +186,16 @@ const server = http.createServer(async (req, res) => {
          export const getHostLanguage=()=>undefined;`);
     }
 
+    // Health check for the host: answers without touching the chain.
+    if (req.method === "GET" && url.pathname === "/healthz") return json(res, 200, { ok: true });
+
+    if (req.method === "GET" && url.pathname.startsWith("/api/") && url.searchParams.has("address")
+        && !ADDRESS.test(url.searchParams.get("address").trim())) {
+      return json(res, 400, { error: "that is not a Nimiq address" });
+    }
+
     if (req.method === "GET" && url.pathname === "/api/overview") {
-      const address = url.searchParams.get("address") || DEMO_ADDRESS;
+      const address = url.searchParams.get("address")?.trim() || DEMO_ADDRESS;
       const o = await overview(address);
       // Addresses are public on chain; logging which one asked makes a wrong
       // balance debuggable without asking the user to read hex off a phone.
@@ -136,7 +206,7 @@ const server = http.createServer(async (req, res) => {
     // Every action, with its hash. A staking app that asks to be trusted and
     // then shows nothing checkable is asking for the wrong thing.
     if (req.method === "GET" && url.pathname === "/api/history") {
-      const address = url.searchParams.get("address") || DEMO_ADDRESS;
+      const address = url.searchParams.get("address")?.trim() || DEMO_ADDRESS;
       return json(res, 200, { history: await chain.stakingHistory(address, 20) });
     }
 
@@ -144,6 +214,7 @@ const server = http.createServer(async (req, res) => {
     // actually landed rather than believing the wallet's reply.
     if (req.method === "GET" && url.pathname.startsWith("/api/tx/")) {
       const hash = decodeURIComponent(url.pathname.slice("/api/tx/".length));
+      if (!/^[0-9a-f]{64}$/i.test(hash)) return json(res, 400, { error: "that is not a transaction hash" });
       const found = await chain.lookup(hash);
       return json(res, 200, {
         hash,
