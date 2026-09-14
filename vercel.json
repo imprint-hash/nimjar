@@ -1,10 +1,16 @@
 {
   "$schema": "https://openapi.vercel.sh/vercel.json",
-  "rewrites": [{ "source": "/(.*)", "destination": "/api/index" }],
-  "functions": {
-    "api/index.js": {
-      "maxDuration": 30,
-      "includeFiles": "{src/public/**,node_modules/@nimiq/mini-app-sdk/dist/index.js,node_modules/@nimiq/core/nodejs/**}"
+  "rewrites": [{ "source": "/((?!app\\.js$|app\\.css$|icon\\.svg$|sdk\\.js$).*)", "destination": "/api/index" }],
+  "headers": [
+    {
+      "source": "/(app\\.js|app\\.css|icon\\.svg|sdk\\.js)",
+      "headers": [
+        { "key": "X-Content-Type-Options", "value": "nosniff" },
+        { "key": "Cache-Control", "value": "public, max-age=0, must-revalidate" }
+      ]
     }
+  ],
+  "functions": {
+    "api/index.js": { "maxDuration": 30 }
   }
 }

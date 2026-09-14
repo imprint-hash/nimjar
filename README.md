@@ -2,7 +2,7 @@
 
 **Stake your NIM in one tap inside Nimiq Pay, and get it all back out, step by step.**
 
-<p align="center"><img src="src/public/icon.svg" width="120" alt="NimJar's mascot: a small yellow character with a leaf on its head, inside Nimiq's hexagon"></p>
+<p align="center"><img src="public/icon.svg" width="120" alt="NimJar's mascot: a small yellow character with a leaf on its head, inside Nimiq's hexagon"></p>
 
 ## The problem
 
@@ -82,8 +82,8 @@ A small Node server that only reads the blockchain, and one page. No build step,
 |---|---|
 | `src/server.js` | Reads the blockchain and serves the page. Never signs anything. |
 | `src/chain.js` | Balances, staking history, transaction checks |
-| `src/public/app.js` | The app: screens, amounts, Nimiq Pay calls |
-| `src/public/app.css` | The design |
+| `public/app.js` | The app: screens, amounts, Nimiq Pay calls |
+| `public/app.css` | The design |
 | `scripts/` | Command-line tools we used to test each step on mainnet |
 
 ## Licence

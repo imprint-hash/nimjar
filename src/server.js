@@ -45,12 +45,22 @@ const DUST = 1000n;
 /** A Nimiq address, with or without the spaces. Anything else never reaches the node. */
 const ADDRESS = /^NQ[0-9]{2}(?: ?[0-9A-Z]{4}){8}$/i;
 
-/** The files the page loads. Read once at start: there is nothing else on disk to serve. */
-const PUBLIC = new URL("./public/", import.meta.url);
-const STATIC = Object.fromEntries(
-  [["/app.js", "text/javascript"], ["/app.css", "text/css"], ["/icon.svg", "image/svg+xml"]]
-    .map(([route, type]) => [route, { type: `${type}; charset=utf-8`, body: fs.readFileSync(new URL("." + route, PUBLIC)) }]),
-);
+/**
+ * The files the page loads, from public/. On Vercel the platform serves that
+ * folder itself and these routes are never reached; locally this server does.
+ * Read on first request and never at start-up: a missing file must cost one
+ * route, not crash every route.
+ */
+const PUBLIC = new URL("../public/", import.meta.url);
+const TYPES = { "/app.js": "text/javascript", "/app.css": "text/css", "/icon.svg": "image/svg+xml", "/sdk.js": "text/javascript" };
+const files = new Map();
+function publicFile(route) {
+  if (!files.has(route)) {
+    try { files.set(route, fs.readFileSync(new URL("." + route, PUBLIC))); }
+    catch { files.set(route, null); }
+  }
+  return files.get(route);
+}
 
 /**
  * Only this site, Google Fonts and nothing else. Inline scripts are refused, so
@@ -71,13 +81,6 @@ const SECURITY = {
   "referrer-policy": "no-referrer",
 };
 
-/** The SDK entry is 722 bytes of browser ESM with no imports, so it is served as-is. */
-let SDK_SOURCE = null;
-try {
-  SDK_SOURCE = fs
-    .readFileSync(fileURLToPath(import.meta.resolve("@nimiq/mini-app-sdk")), "utf8")
-    .replace(/\/\/# sourceMappingURL=.*$/m, "");
-} catch { /* absent: /sdk.js answers with a stub and the page still loads */ }
 
 /**
  * Validators the chain says are healthy: not retired, not jailed, not flagged
@@ -246,19 +249,11 @@ export async function handler(req, res) {
       return res.end(renderApp({ demoAddress: DEMO_ADDRESS, networkId: NETWORK_ID }));
     }
 
-    if (req.method === "GET" && STATIC[url.pathname]) {
-      const file = STATIC[url.pathname];
-      res.writeHead(200, { ...SECURITY, "content-type": file.type, "cache-control": "no-cache" });
-      return res.end(file.body);
-    }
-
-    if (req.method === "GET" && url.pathname === "/sdk.js") {
-      res.writeHead(200, { ...SECURITY, "content-type": "text/javascript; charset=utf-8" });
-      if (SDK_SOURCE) return res.end(SDK_SOURCE);
-      return res.end(
-        `const absent=(n)=>()=>Promise.reject(new Error(n+" needs @nimiq/mini-app-sdk"));
-         export const init=absent("init"), requestDeviceIdentifier=absent("requestDeviceIdentifier");
-         export const getHostLanguage=()=>undefined;`);
+    if (req.method === "GET" && TYPES[url.pathname]) {
+      const body = publicFile(url.pathname);
+      if (!body) return json(res, 404, { error: "not found" });
+      res.writeHead(200, { ...SECURITY, "content-type": `${TYPES[url.pathname]}; charset=utf-8`, "cache-control": "no-cache" });
+      return res.end(body);
     }
 
     // Health check for the host: answers without touching the chain.

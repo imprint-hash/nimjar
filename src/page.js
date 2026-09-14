@@ -1,5 +1,5 @@
 /**
- * The page shell. Styles and behaviour live in src/public/, served as files, so
+ * The page shell. Styles and behaviour live in public/, served as files, so
  * nothing here needs escaping and the browser can cache them.
  *
  * The only thing the server fills in is which network it reads and which wallet
