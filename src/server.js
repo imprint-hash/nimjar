@@ -310,6 +310,10 @@ export async function handler(req, res) {
   }
 }
 
+// Vercel treats src/server.js as the app's entry point and requires a default
+// export; without it every request failed with "Invalid export found".
+export default handler;
+
 // Listen only when run directly (npm start). On Vercel, api/index.js imports
 // the handler instead and the platform does the listening.
 const runDirectly = process.argv[1] && fileURLToPath(import.meta.url) === process.argv[1];
