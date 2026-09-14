@@ -321,8 +321,9 @@ function activity() {
   if (!S.history.length) return `<div id="activity"></div>`;
   return `<div class="sec" id="activity"><h2>Activity</h2>${S.history.map((h) => {
     let [label, dot, icon, attempt] = ACTION[h.type] || [h.type, "--blue-soft", "clock", h.type];
-    // Setting the active stake to zero is an unstake; to more, a restake.
-    if (h.type === "set-active-stake") label = h.newActiveBalance != null && BigInt(h.newActiveBalance) > 0n ? "Staked again" : "Unstake requested";
+    // Setting the active stake to zero is a full unstake. Any other number is a
+    // partial unstake or a restake, and one transaction alone can't say which.
+    if (h.type === "set-active-stake") label = h.newActiveBalance != null && BigInt(h.newActiveBalance) > 0n ? "Stake changed" : "Unstake requested";
     const amount = h.type === "retire-stake" ? h.retireStake : h.type === "set-active-stake" ? null : h.value;
     let shown = amount != null && BigInt(amount) > 0n ? nim(amount) + " NIM" : "";
     // On chain but changed nothing. Shown as what it was, never as done.

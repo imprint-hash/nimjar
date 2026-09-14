@@ -64,9 +64,9 @@ We found four rules that aren't in the docs by testing with real money. NimJar h
 
 ## Try it
 
-Open the app in Nimiq Pay (Mini Apps → Custom URL), or in any browser to see the preview:
+**[nimjar.vercel.app](https://nimjar.vercel.app)**
 
-**Link coming soon**
+Open it in Nimiq Pay (Mini Apps → Custom URL) to stake your own NIM, or in any browser to see the preview.
 
 ## For developers
 
