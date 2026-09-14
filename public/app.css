@@ -50,6 +50,8 @@
 }
 
 * { box-sizing: border-box; -webkit-tap-highlight-color: transparent }
+/* hidden must win over any display rule (.earn is flex) */
+[hidden] { display: none !important }
 html { background: var(--screen) }
 body {
   margin: 0; background: var(--screen); color: var(--text);

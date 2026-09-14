@@ -404,7 +404,9 @@ function render() {
 
   app.innerHTML = header() + preview + message() + card(w) + body;
   dock.innerHTML = dockFor(w, showForm);
-  if (showForm) updateForm();
+  // Arriving at the form with nothing typed (first visit, or back after a full
+  // withdrawal) starts from a sensible amount instead of an empty, dead button.
+  if (showForm) { if (!S.amount) setPreset(S.preset || "half"); else updateForm(); }
 }
 
 function dockFor(w, showForm) {
@@ -657,7 +659,6 @@ async function boot() {
     S.provider = null;   // not inside Nimiq Pay: show the real staked wallet instead
   }
   await refresh();
-  if (S.data && !wallet().isStaking) setPreset("half");
 }
 
 boot();
