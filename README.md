@@ -29,9 +29,9 @@ And getting staked NIM back out is confusing: it takes three separate steps, a w
 
 ## Proof that it works
 
-### The full round trip inside Nimiq Pay
+### The full round trip inside Nimiq Pay (testnet)
 
-Every step below was tapped in NimJar and confirmed in Nimiq Pay, on a phone (Nimiq testnet).
+Every step below was tapped in NimJar and confirmed in Nimiq Pay on a phone, using Nimiq's testnet.
 
 | Step | Amount | Transaction |
 |---|---|---|
@@ -41,7 +41,9 @@ Every step below was tapped in NimJar and confirmed in Nimiq Pay, on a phone (Ni
 | Confirm withdrawal | 600 NIM | [9df81d33…](https://test.nimiq.watch/#9df81d3393c6d3a19e267a13485a2571c6413de1b9146b37f71f2832f2c18a5e) |
 | Withdraw | 600 NIM | [5d34b300…](https://test.nimiq.watch/#5d34b3009765fd64452d283a0c261125f4fd42e605bffbc5714d8aa2f92e9f7a) |
 
-### The same round trip with real money, on mainnet
+### Every staking step with real money, on mainnet
+
+Before building the app, we ran each step on mainnet with real NIM, using our own command-line tools (in `scripts/`, not the app). They send the same staking transactions that NimJar asks Nimiq Pay to sign.
 
 | Step | Amount | Transaction |
 |---|---|---|
@@ -55,7 +57,7 @@ The other 100 NIM in that wallet is still staked. When you open NimJar in a norm
 
 ## What we learned the hard way
 
-We found four rules that aren't in the docs by testing with real money. NimJar handles all of them.
+We found four rules that aren't in the docs, by testing on mainnet with real money and on testnet inside Nimiq Pay. NimJar handles all of them.
 
 1. **Getting out is three steps, not two.** Nimiq's staking FAQ mentions two.
 2. **The wait is up to a day, not 12 hours.** Unstaked NIM is only released one full 12-hour period after the next checkpoint. Our first version didn't know this, and three early attempts to confirm a withdrawal failed on the blockchain ([1](https://test.nimiq.watch/#b7a5bc76d1a755e10535311927e502b7ab58f4166fe4ba5535e53cd3a894db4b), [2](https://test.nimiq.watch/#53da8349c36bd9c24ce45628e412fa87fb23606bdcab8209b7408663a42351a1), [3](https://test.nimiq.watch/#4063c266dcc51e33f21be869ac96d2a973255836872c4bf28277b622c090e67d)). NimJar now shows them as failed, instead of pretending they worked.
