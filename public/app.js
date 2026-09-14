@@ -269,7 +269,12 @@ function validatorCard(w) {
     : "Picked for you: the busiest healthy validator right now.";
   const warn = w.isStaking && v.payoutType === "none"
     ? `<p class="hint" style="color:var(--red-text)">This validator doesn't pay rewards to its stakers.</p>` : "";
-  const dot = /^#[0-9a-f]{6}$/i.test(v.color ?? "") ? `background:${v.color};color:#fff` : "background:var(--green-soft)";
+  // The pool's own colour, with a navy or white icon, whichever reads on it.
+  let dot = "background:var(--green-soft)";
+  if (/^#[0-9a-f]{6}$/i.test(v.color ?? "")) {
+    const [r, g, b] = [1, 3, 5].map((i) => parseInt(v.color.slice(i, i + 2), 16));
+    dot = `background:${v.color};color:${0.299 * r + 0.587 * g + 0.114 * b > 150 ? "#1F2348" : "#fff"}`;
+  }
   return `<div class="val"><div class="row">
       <div class="dot" style="${dot}">${ic("shield")}</div>
       <div class="t"><b>${v.name ? esc(v.name) : `<span class="mono">${esc(shortAddr(v.address))}</span>`}</b><span>${esc(facts || shortAddr(v.address))}</span></div>

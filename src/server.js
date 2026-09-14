@@ -42,8 +42,22 @@ const chain = new Chain({ url: RPC_URL });
  */
 const DUST = 1000n;
 
-/** A Nimiq address, with or without the spaces. Anything else never reaches the node. */
-const ADDRESS = /^NQ[0-9]{2}(?: ?[0-9A-Z]{4}){8}$/i;
+/**
+ * A Nimiq address, with or without the spaces, including its IBAN-style
+ * checksum. Anything else never reaches the node, so a mistyped address gets a
+ * clear answer instead of the node's "Unknown format".
+ */
+const ALPHABET = "0123456789ABCDEFGHJKLMNPQRSTUVXY";
+const ADDRESS = {
+  test(value) {
+    const c = String(value).replace(/\s+/g, "").toUpperCase();
+    if (!/^NQ[0-9]{2}[0-9A-Z]{32}$/.test(c) || [...c.slice(4)].some((ch) => !ALPHABET.includes(ch))) return false;
+    const digits = (c.slice(4) + c.slice(0, 4)).replace(/[A-Z]/g, (ch) => String(ch.charCodeAt(0) - 55));
+    let mod = 0;
+    for (const d of digits) mod = (mod * 10 + Number(d)) % 97;
+    return mod === 1;
+  },
+};
 
 /**
  * The files the page loads, from public/. On Vercel the platform serves that
