@@ -15,7 +15,7 @@ NimJar is a mini app for [Nimiq Pay](https://www.nimiq.com/). Nimiq Pay can hold
 - **It checks, instead of trusting.** After every action NimJar asks the chain whether the transaction really landed. Failed transactions are shown as failed, never as done.
 - **Plain words.** Available, Staked, Unstake, Withdraw. No "delegate", no "APY", no "epoch". Earnings are shown in NIM per week, not percentages. A mascot whose face follows your money (dozing during the wait, serious at the permanent step) answers the common questions.
 
-## Three things the docs don't tell you
+## Four things the docs don't tell you
 
 We found these by doing it with real money, on mainnet and inside Nimiq Pay. Each one is handled in the code and backed by a transaction you can check.
 
@@ -41,7 +41,19 @@ The whole wait is up to about a day. With the rule fixed, the same wallet's next
 
 The other 100 NIM is still staked: it's the wallet NimJar shows when you open it outside Nimiq Pay, so every number on the preview is real and checkable.
 
-Staking also ran inside Nimiq Pay itself, on testnet: [first stake](https://test.nimiq.watch/#4318bf6cd8fa3b263ffa2b5ca66c5b768991ebe5a7c1424d155a7c19501b6ca8), [add stake](https://test.nimiq.watch/#5d90b1a72e51eb17852552f339e8085ef6cc954abab5bc0e18f2d86574800f5c), [unstake](https://test.nimiq.watch/#0e631c471ab3ac252631ac0799e18f90d7057e9a1ad8ba79e75ae1b2cc3c48fd).
+### And the full round trip inside Nimiq Pay (testnet)
+
+Every step below was tapped in NimJar and confirmed in Nimiq Pay on a phone.
+
+| Step | Amount | Block | Transaction |
+|---|---|---|---|
+| Stake | 100 NIM | 11,146,029 | [4318bf6c…](https://test.nimiq.watch/#4318bf6cd8fa3b263ffa2b5ca66c5b768991ebe5a7c1424d155a7c19501b6ca8) |
+| Add stake | 500 NIM | 11,146,044 | [5d90b1a7…](https://test.nimiq.watch/#5d90b1a72e51eb17852552f339e8085ef6cc954abab5bc0e18f2d86574800f5c) |
+| Unstake | 600 NIM | 11,146,249 | [0e631c47…](https://test.nimiq.watch/#0e631c471ab3ac252631ac0799e18f90d7057e9a1ad8ba79e75ae1b2cc3c48fd) |
+| Confirm withdrawal (permanent) | 600 NIM | 11,436,281 | [9df81d33…](https://test.nimiq.watch/#9df81d3393c6d3a19e267a13485a2571c6413de1b9146b37f71f2832f2c18a5e) |
+| Withdraw | 600 NIM | 11,438,913 | [5d34b300…](https://test.nimiq.watch/#5d34b3009765fd64452d283a0c261125f4fd42e605bffbc5714d8aa2f92e9f7a) |
+
+**4. A withdrawal can't leave a little behind.** No withdrawal may leave between 0 and 100 NIM in the staking contract (`staker.rs`, invariant 2), and Nimiq Pay pays zero fees whatever the app suggests. Our first withdrawal inside Nimiq Pay asked for the balance minus a fee, would have left 0.002 NIM behind, and was dropped without an error. Asking for the whole balance landed at once, with every luna back in the wallet.
 
 ## Try it
 
