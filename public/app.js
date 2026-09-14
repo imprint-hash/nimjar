@@ -38,6 +38,10 @@ const DUST = 1000n;
 const $ = (id) => document.getElementById(id);
 const app = $("app");
 const dock = $("dock");
+const device = $("device");
+/** On a laptop the app scrolls inside a drawn phone; on a phone, the page scrolls. */
+const framed = () => !!device && getComputedStyle(device).overflowY !== "visible";
+const toTop = (smooth = true) => (framed() ? device : window).scrollTo({ top: 0, behavior: smooth ? "smooth" : "auto" });
 
 const S = {
   provider: null,           // null outside Nimiq Pay
@@ -453,17 +457,28 @@ function openSheet(w) {
     <button class="cta" type="button" data-act="unstake-yes">Unstake ${nim(w.staked)} NIM</button>
     <button class="cta quiet" type="button" data-act="sheet-close">Keep staking</button>
   </div>`;
-  document.body.appendChild(wrap);
+  if (framed()) {
+    // Inside the drawn phone: cover what's on screen now, and hold the scroll.
+    wrap.style.top = device.scrollTop + "px";
+    wrap.style.height = device.clientHeight + "px";
+    device.style.overflowY = "hidden";
+    device.appendChild(wrap);
+  } else {
+    document.body.appendChild(wrap);
+  }
   wrap.addEventListener("click", (e) => { if (e.target === wrap) closeSheet(); });
   wrap.querySelector("[data-act=unstake-yes]").focus();
 }
-function closeSheet() { document.querySelector(".sheetwrap")?.remove(); }
+function closeSheet() {
+  document.querySelector(".sheetwrap")?.remove();
+  if (device) device.style.overflowY = "";
+}
 
 /* ---- actions ------------------------------------------------------------- */
 function previewOnly() {
   S.msg = { kind: "info", text: "This is a preview of a real wallet. Open NimJar inside Nimiq Pay to move your own NIM." };
   render();
-  scrollTo({ top: 0, behavior: "smooth" });
+  toTop();
 }
 
 /** What Nimiq Pay said, in words a person would use. */
@@ -504,7 +519,7 @@ async function run(send, sentText, doneText) {
   } finally {
     S.busy = false;
     await refresh();
-    scrollTo({ top: 0, behavior: "smooth" });
+    toTop();
   }
 }
 
@@ -533,7 +548,7 @@ document.addEventListener("click", (e) => {
     sec.querySelector(".bubble").innerHTML = `<b>${q}</b>${a}`;
   }
   if (act === "preset") setPreset(el.dataset.set);
-  if (act === "more") { S.view = "form"; S.msg = null; render(); setPreset("half"); scrollTo({ top: 0 }); }
+  if (act === "more") { S.view = "form"; S.msg = null; render(); setPreset("half"); toTop(false); }
   if (act === "cancel") { S.view = "home"; render(); }
   if (act === "unstake") { if (!S.provider) return previewOnly(); openSheet(w); }
   if (act === "sheet-close") closeSheet();
@@ -617,6 +632,14 @@ function countdown(seconds) {
   if (seconds < 3600) return "about " + Math.max(1, Math.round(seconds / 60)) + " minutes left";
   return "about " + (seconds / 3600).toFixed(1) + " hours left";
 }
+
+/* The laptop panel's "Copy link": the way into Nimiq Pay is pasting this URL. */
+$("copy")?.addEventListener("click", async (e) => {
+  const btn = e.currentTarget;
+  try { await navigator.clipboard.writeText(location.origin); btn.textContent = "Copied"; }
+  catch { btn.textContent = location.host; }
+  setTimeout(() => { btn.textContent = "Copy link"; }, 2500);
+});
 
 /* ---- boot ---------------------------------------------------------------- */
 async function boot() {

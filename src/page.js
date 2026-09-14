@@ -29,8 +29,26 @@ export function renderApp({ demoAddress, networkId }) {
 <script type="module" src="/app.js"></script>
 </head>
 <body>
+<div class="stage">
+<aside class="intro" aria-label="About NimJar">
+  <img src="/icon.svg" width="88" height="88" alt="">
+  <h1>NimJar</h1>
+  <p class="lede">Stake your NIM in one tap inside Nimiq Pay, and get it all back out, step by step.</p>
+  <h2>Try it in Nimiq Pay</h2>
+  <ol>
+    <li>Open Nimiq Pay on your phone</li>
+    <li>Go to <b>Mini Apps</b>, then <b>Custom URL</b></li>
+    <li>Enter <b class="url">nimjar.vercel.app</b></li>
+  </ol>
+  <button class="copy" type="button" id="copy">Copy link</button>
+  <p class="note">Next to this is a live preview of a real staked wallet on Nimiq mainnet. Every number in it is real, and every entry links to the blockchain.</p>
+  <p class="note"><a href="https://github.com/imprint-hash/nimjar" target="_blank" rel="noopener">Source code and proof on GitHub</a></p>
+</aside>
+<div class="device" id="device">
 <main class="app" id="app"></main>
 <div class="dock" id="dock"></div>
+</div>
+</div>
 <noscript><p style="padding:20px">NimJar needs JavaScript to read the Nimiq network.</p></noscript>
 </body>
 </html>`;
