@@ -259,6 +259,7 @@ function mascot(size, mood = "idle", gesture = "") {
   </g></g></g></g>
   <g transform="${PLACE}">
     <g class="m-wave"><path d="M70 92 L86 66" stroke="#F2C230" stroke-width="8" stroke-linecap="round"/><circle cx="87" cy="63" r="6" fill="#FBDE45" stroke="#C98E0B" stroke-width="1.2"/></g>
+    <g class="m-point"><path d="M70 93 L90 84" stroke="#F2C230" stroke-width="8" stroke-linecap="round"/><rect x="87" y="78" width="11" height="11" rx="4" fill="#FBDE45" stroke="#C98E0B" stroke-width="1.2"/><rect x="95" y="79.5" width="10" height="4.6" rx="2.3" fill="#FBDE45" stroke="#C98E0B" stroke-width="1.1"/></g>
     <g class="m-thumb"><path d="M70 95 L78 80" stroke="#F2C230" stroke-width="8" stroke-linecap="round"/><rect x="71" y="67" width="17" height="14" rx="5" fill="#FBDE45" stroke="#C98E0B" stroke-width="1.2"/><rect x="71.5" y="55.5" width="6" height="15" rx="3" fill="#FBDE45" stroke="#C98E0B" stroke-width="1.2" transform="rotate(-8 74.5 70)"/><path d="M80 71.5h6M80 75h6M80 78.5h5" stroke="#C98E0B" stroke-width="1.1" stroke-linecap="round"/></g>
   </g>
   ${mood === "sleepy" ? `<g class="m-z" fill="#F4F4F8" font-family="Mulish,sans-serif" font-weight="900"><text x="74" y="32" font-size="15">z</text><text x="84" y="19" font-size="11">z</text></g>` : ""}

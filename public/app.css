@@ -285,10 +285,10 @@ button:focus-visible, a:focus-visible, input:focus-visible, .agree:focus-within 
   .track .now .n { animation: pulse 2.4s ease-in-out infinite }
 }
 /* arms: hidden until there's something to say */
-.albie .m-wave, .albie .m-thumb { display: none; transform-box: fill-box }
+.albie .m-wave, .albie .m-thumb, .albie .m-point { display: none; transform-box: fill-box }
 .albie .m-wave { transform-origin: 0% 100% }
 .albie .m-thumb { transform-origin: 30% 100% }
-.albie.g-wave .m-wave, .albie.g-thumb .m-thumb { display: inline }
+.albie.g-wave .m-wave, .albie.g-thumb .m-thumb, .albie.g-point .m-point { display: inline }
 @media (prefers-reduced-motion: no-preference) {
   .albie.g-wave .m-wave { animation: m-wave .42s ease-in-out 5 alternate }
   .albie.g-thumb .m-thumb { animation: m-thumb .5s cubic-bezier(.3, 1.6, .5, 1) }

@@ -14,6 +14,7 @@ And getting staked NIM back out is confusing: it takes three separate steps, a w
 
 - **Stake without leaving Nimiq Pay.** Pick an amount, tap Stake, confirm in Nimiq Pay. That's it.
 - **Picks a good validator for you.** NimJar uses Nimiq's official validator list and only suggests pools that actually pay their stakers, charge a fair fee, have a good trust score and aren't too big. Different people get different pools, so stake is spread out. You see the pool's name and fee, never a code to decode.
+- **Shows what you've earned.** "Earned so far" is what your pool has actually added to your stake, read straight from the blockchain.
 - **Walks you all the way back out.** It shows which step you're on, counts down the wait, and won't let you tap the permanent step by accident.
 - **Never holds your money.** NimJar can't move your NIM. Every action is confirmed by you, in Nimiq Pay.
 - **Shows the truth.** After every action NimJar checks the blockchain to see that it really went through. If something failed, it says so.
