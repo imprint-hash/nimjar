@@ -159,6 +159,7 @@ async function validatorDirectory(net) {
         score: typeof v.score?.total === "number" ? v.score.total : null,
         dominance: typeof v.dominanceRatio === "number" && v.dominanceRatio >= 0 ? v.dominanceRatio : null,
         color: /^#[0-9a-f]{6}$/i.test(v.accentColor ?? "") ? v.accentColor : null,
+        payoutSchedule: typeof v.payoutSchedule === "string" ? v.payoutSchedule.slice(0, 160) : null,
       })),
     });
   } catch (e) {
@@ -248,6 +249,17 @@ async function overview(address, net) {
 
   const secondsLeft = releaseAt && height < releaseAt ? releaseAt - height : 0;
 
+  // Rewards received so far, for pools that add them to the stake. See
+  // Chain.stakeFlows for why this is measured as "in the stake now, minus what
+  // you put in". Direct pools pay into the wallet instead: no number then.
+  let earned = null;
+  const inStake = staked + inactive + retired;
+  if (inStake > 0n) {
+    const flows = await chain.stakeFlows(address).catch(() => null);
+    const principal = flows ? flows.deposited - flows.withdrawn : null;
+    if (flows?.complete && principal !== null && inStake >= principal) earned = String(inStake - principal);
+  }
+
   return {
     address,
     height,
@@ -267,6 +279,7 @@ async function overview(address, net) {
     isStaking: staked > 0n || leavingIn > 0n || leavingOut > 0n,
     /** Which of the three steps out the money is on, if any. */
     leaving: leavingOut > 0n ? "ready" : leavingIn > 0n ? (secondsLeft > 0 ? "waiting" : "releasable") : null,
+    earned,
     suggested: pickValidator(address, healthy, dir),
     current: describe(staker?.delegation, healthy, dir),
   };

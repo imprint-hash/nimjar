@@ -21,7 +21,7 @@
   --gold: #E9B213; --gold-soft: #FDF1C7;
   --blue: #0582CA; --blue-soft: #D9ECF8;
   --green: #21BCA5; --green-soft: #D4F3EE;
-  --red: #D94432; --red-soft: #FBE3DF; --red-text: #B8321F;
+  --red: #D94432; --red-soft: #FBE3DF; --red-text: #B8321F; --gain: #127A6B;
   --card: linear-gradient(165deg, #FDF1C7 0%, #FCE9D6 48%, #DCEBFA 100%);
   --dim: rgba(14, 16, 48, .45);
   --stage: #E9B213; --stage-text: #1F2348; --bezel: #0E1030;
@@ -34,7 +34,7 @@
     --screen: #1F2348; --surface: #282D5A;
     --text: #F4F4F8; --muted: #A3A6C4; --rule: #343A6E;
     --outline: #07081A; --pill: #F4F4F8; --pill-text: #1F2348;
-    --gold-soft: #4A3D17; --blue-soft: #16395A; --green-soft: #134744; --red-soft: #4D2230; --red-text: #FF7B69;
+    --gold-soft: #4A3D17; --blue-soft: #16395A; --green-soft: #134744; --red-soft: #4D2230; --red-text: #FF7B69; --gain: #6FE3CF;
     --card: linear-gradient(165deg, #4B3E1F 0%, #3A3050 50%, #1E3F66 100%);
     --dim: rgba(0, 0, 0, .55);
     --stage: #151833; --stage-text: #F4F4F8; --bezel: #05061A;
@@ -45,7 +45,7 @@
   --screen: #1F2348; --surface: #282D5A;
   --text: #F4F4F8; --muted: #A3A6C4; --rule: #343A6E;
   --outline: #07081A; --pill: #F4F4F8; --pill-text: #1F2348;
-  --gold-soft: #4A3D17; --blue-soft: #16395A; --green-soft: #134744; --red-soft: #4D2230; --red-text: #FF7B69;
+  --gold-soft: #4A3D17; --blue-soft: #16395A; --green-soft: #134744; --red-soft: #4D2230; --red-text: #FF7B69; --gain: #6FE3CF;
   --card: linear-gradient(165deg, #4B3E1F 0%, #3A3050 50%, #1E3F66 100%);
   --dim: rgba(0, 0, 0, .55);
   --stage: #151833; --stage-text: #F4F4F8; --bezel: #05061A;
@@ -106,6 +106,10 @@ button:focus-visible, a:focus-visible, input:focus-visible, .agree:focus-within 
 .earn { display: flex; align-items: center; gap: 10px; background: var(--green-soft); border: 2px solid var(--outline); border-radius: 16px; padding: 10px 14px; font-weight: 800; font-size: 15px }
 .earn b { font-weight: 900 }
 .earn svg { width: 20px; height: 20px; flex: none }
+.gain { border: 2.5px solid var(--outline); border-radius: 22px; background: var(--green-soft); padding: 14px 18px; display: grid; gap: 2px; box-shadow: 0 4px 0 var(--outline) }
+.gain .k { font-size: 13px; font-weight: 800; color: var(--muted); text-transform: uppercase; letter-spacing: .06em }
+.gain .v { font-size: 34px; font-weight: 900; letter-spacing: -.03em; color: var(--gain); font-variant-numeric: tabular-nums }
+.gain .note { margin: 4px 0 0; font-size: 13.5px; font-weight: 600; color: var(--muted); line-height: 1.45 }
 .facts { display: grid; grid-template-columns: 1fr 1fr; gap: 10px }
 .fact { border: 2px solid var(--outline); border-radius: 18px; padding: 10px 14px; background: var(--surface); display: grid; gap: 2px }
 .fact .k { font-size: 12.5px; font-weight: 700; color: var(--muted) }

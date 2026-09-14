@@ -47,6 +47,7 @@ function demoAnswer(path) {
   const secondsLeft = s.inactive > 0n ? Math.max(0, Math.ceil((s.unlockAt - Date.now()) / 1000)) : 0;
   const isStaking = s.staked > 0n || s.inactive > 0n || s.retired > 0n;
   return {
+    earned: String(demoEarned()),
     address: "demo", height: s.height, net: S.net, networkId: 24,
     spendable: String(s.spendable), inAddress: String(s.spendable), heldByPay: "0",
     staked: String(s.staked), inactive: String(s.inactive), retired: String(s.retired),
@@ -56,18 +57,34 @@ function demoAnswer(path) {
     suggested: s.pool, current: isStaking ? s.pool : null,
   };
 }
+/* In the demo, rewards accrue at the real rate with one second standing in for
+   one day, so the "Earned so far" number visibly grows. */
+function demoEarned() {
+  const s = DEMO.s;
+  if (s.staked === 0n || !s.since) return s.banked ?? 0n;
+  const days = (Date.now() - s.since) / 1000;
+  const rate = YEARLY * (1 - (s.pool?.fee ?? 0));
+  return (s.banked ?? 0n) + BigInt(Math.floor(Number(s.staked) * rate * days / 365));
+}
+setInterval(() => {
+  if (!DEMO.on || DEMO.s.staked === 0n) return;
+  const el = $("earnedV");
+  if (el) el.textContent = "+" + nim(demoEarned()) + " NIM";
+}, 1000);
 const pause = (ms) => new Promise((ok) => setTimeout(ok, ms));
 const demoWallet = {
   async sendNewStakerTransaction({ value }) { await pause(700); return demoWallet._stake(value, "create-staker"); },
   async sendStakeTransaction({ value }) { await pause(700); return demoWallet._stake(value, "add-stake"); },
   _stake(value, type) {
     const s = DEMO.s, v = BigInt(value);
+    s.banked = demoEarned(); s.since = Date.now();
     s.spendable -= v; s.staked += v;
     return demoLog(type, v);
   },
   async sendSetActiveStakeTransaction({ newActiveBalance }) {
     await pause(700);
     const s = DEMO.s, target = BigInt(newActiveBalance);
+    s.banked = demoEarned(); s.since = Date.now();
     if (target < s.staked) { s.inactive += s.staked - target; s.unlockAt = Date.now() + DEMO.wait; }
     else { s.inactive -= target - s.staked; }
     s.staked = target;
@@ -351,6 +368,31 @@ function card(w) {
 }
 
 const PAYOUT = { restake: "rewards added to your stake", direct: "rewards paid to your wallet" };
+
+/**
+ * What the pool has actually paid so far. For "restake" pools the server
+ * measures it exactly (what's in the stake minus what you put in). Pools pay
+ * in batches above a minimum, so a small, new stake can honestly show +0 for
+ * a while: the pool's own payout note says when to expect it. "Direct" pools
+ * pay into the wallet, which the chain can't separate from other payments.
+ */
+function earnedBox(w) {
+  const v = S.data.current;
+  if (!v || w.staked === 0n) return "";
+  const pool = esc(v.name || "Your pool");
+  if (v.payoutType === "direct") {
+    return `<div class="sec"><div class="gain"><span class="k">Rewards</span><p class="note">${pool} sends your rewards straight to your wallet.</p></div></div>`;
+  }
+  const e = S.data.earned;
+  const note = DEMO.on ? "Demo: one second here is one day of staking."
+    : e != null && BigInt(e) === 0n
+      ? `No payout from ${pool} has reached this stake yet. Pools pay in batches, usually once your rewards pass a minimum, so a small or new stake can take a while.`
+      : `Added to your stake by ${pool}.`;
+  return `<div class="sec"><div class="gain">
+    <span class="k">Earned so far</span>
+    <b class="v" id="earnedV">${e != null ? "+" + nim(e) + " NIM" : "Not known yet"}</b>
+    <p class="note">${note}</p></div></div>`;
+}
 function validatorCard(w) {
   const v = w.isStaking ? S.data.current : S.data.suggested;
   if (!v) return "";
@@ -492,7 +534,7 @@ function render() {
     }
     body += activity() + ask(w);
   } else {
-    body = `<div class="sec"><div class="facts">
+    body = earnedBox(w) + `<div class="sec"><div class="facts">
         <div class="fact"><span class="k">Staked</span><span class="v">${nim(w.staked)} NIM</span></div>
         <div class="fact"><span class="k">Yearly rewards</span><span class="v">≈ ${Math.floor(perWeek(w.staked) * 52).toLocaleString("en-GB")} NIM</span></div>
       </div>${validatorCard(w)}</div>` + activity() + ask(w);

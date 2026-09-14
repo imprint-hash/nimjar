@@ -160,6 +160,52 @@ export class Chain {
     return out;
   }
 
+  /** Every transaction touching an address, newest first, up to a cap. */
+  async allTransactions(address, cap = 500) {
+    const out = [];
+    let startAt = null;
+    while (out.length < cap) {
+      const page = (await this.call("getTransactionsByAddress", [String(address), 100, startAt])) ?? [];
+      out.push(...page);
+      if (page.length < 100) return { txs: out, complete: true };
+      startAt = page[page.length - 1].hash;
+    }
+    return { txs: out, complete: false };
+  }
+
+  /**
+   * What this wallet has put into staking and taken back out, from its own
+   * transactions (and Nimiq Pay's swap contracts in its name).
+   *
+   * Rewards from a "restake" pool arrive as add-stake transactions sent by the
+   * pool, and the node does not list those under the staker's address (checked
+   * on mainnet, 15 Sep 2026: a NimiqPocket payout names the staker in its data
+   * and related addresses, yet never appears in the staker's history). So the
+   * rewards are measured the other way round: what's in the stake now, minus
+   * what the wallet itself put in. For a restake pool that difference is
+   * exactly the rewards. If the history is too long to read in full, say so
+   * rather than guess.
+   */
+  async stakeFlows(address) {
+    const me = String(address);
+    const own = await this.allTransactions(me);
+    const htlcs = [...new Set(own.txs.filter((t) => t.from === me && t.toType === 2).map((t) => t.to))];
+    const mine = new Set([me, ...htlcs]);
+    const extra = await Promise.all(htlcs.map((h) => this.allTransactions(h).catch(() => ({ txs: [], complete: false }))));
+    const seen = new Set();
+    const txs = [own, ...extra].flatMap((r) => r.txs).filter((t) => (seen.has(t.hash) ? false : seen.add(t.hash)));
+    let deposited = 0n, withdrawn = 0n;
+    for (const t of txs) {
+      if (t.executionResult === false) continue;
+      const tag = (t.recipientData || "").slice(0, 2);
+      // create-staker (05) and add-stake (06) sent by this wallet
+      if (t.toType === 3 && mine.has(t.from) && (tag === "05" || tag === "06")) deposited += BigInt(t.value ?? 0);
+      // remove-stake: the contract pays out value, and the fee leaves the stake too
+      if (t.fromType === 3 && t.senderData === "01" && mine.has(t.to)) withdrawn += BigInt(t.value ?? 0) + BigInt(t.fee ?? 0);
+    }
+    return { deposited, withdrawn, complete: own.complete && extra.every((r) => r.complete) };
+  }
+
   async lookup(hash) {
     try { return await this.call("getTransactionByHash", [String(hash)]); }
     catch { return null; }
