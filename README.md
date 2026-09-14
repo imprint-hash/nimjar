@@ -2,13 +2,14 @@
 
 **Stake your NIM in one tap inside Nimiq Pay, and get it all back out, step by step.**
 
-NimJar is a mini app for [Nimiq Pay](https://www.nimiq.com/). Nimiq Pay can hold NIM, but it can't stake it: to earn the ~15% a year that staking pays, people have to leave the app and find another wallet, so most never do. NimJar puts staking inside Nimiq Pay, and it's the only mini app that also walks you safely through **getting your money back out**.
+NimJar is a mini app for [Nimiq Pay](https://www.nimiq.com/). Nimiq Pay can hold NIM, but it can't stake it: to earn the ~15% a year that staking pays, people have to leave the app and go to the Nimiq Wallet website, so most never do. With NimJar you stake right inside Nimiq Pay, without leaving the app, and it's the only mini app that also walks you safely through **getting your money back out**.
 
 <p align="center"><img src="src/public/icon.svg" width="120" alt="NimJar's mascot: a small yellow character with a leaf on its head, inside Nimiq's hexagon"></p>
 
 ## What makes it different
 
-- **One tap in.** Pick an amount, tap Stake, confirm in Nimiq Pay. NimJar picks a busy, healthy validator for you.
+- **One tap in, without leaving Nimiq Pay.** Pick an amount, tap Stake, confirm in Nimiq Pay.
+- **The validator is picked for you.** NimJar only considers validators that are active, not jailed and not flagged as inactive, and suggests the one most stakers already trust. You never have to judge a list of addresses.
 - **The whole way out.** Getting out of staking is three separate transactions with a wait of up to a day in the middle, and one of them can't be undone. NimJar shows where you are, counts down the wait, and makes the permanent step impossible to tap by accident: you tick a box first.
 - **It never holds your money.** The server only reads the blockchain. Every action is signed by your own wallet, on your own phone, through Nimiq Pay's confirmation sheet.
 - **It checks, instead of trusting.** After every action NimJar asks the chain whether the transaction really landed. Failed transactions are shown as failed, never as done.
