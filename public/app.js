@@ -17,9 +17,87 @@ const CFG = JSON.parse(document.getElementById("cfg").textContent);
    otherwise be shown their mainnet balance of 0. */
 const explorer = () => (S.net === "test" ? "https://test.nimiq.watch/#" : "https://nimiq.watch/#");
 const api = (path, params = {}) => {
+  if (DEMO.on) return Promise.resolve(new Response(JSON.stringify(demoAnswer(path)), { status: 200 }));
   const q = new URLSearchParams({ ...params, net: S.net });
   return fetch(`/api/${path}?${q}`);
 };
+
+/* ---- demo wallet ---------------------------------------------------------
+   For anyone without Nimiq Pay at hand (a judge on a laptop, say): the whole
+   flow, in the browser, against a pretend wallet. Nothing is signed or sent,
+   the screen says so the whole time, and the day-long wait takes 15 seconds.
+   It runs the same screens and the same code paths as the real thing; only
+   the wallet and the chain are stand-ins. */
+const DEMO = {
+  on: false,
+  wait: 15_000,
+  s: { spendable: 11_100_000_000n, staked: 0n, inactive: 0n, retired: 0n, unlockAt: 0, height: 61_600_000, history: [], pool: null },
+};
+const fakeHash = () => Array.from(crypto.getRandomValues(new Uint8Array(32)), (b) => b.toString(16).padStart(2, "0")).join("");
+function demoLog(type, value, extra = {}) {
+  const s = DEMO.s;
+  s.height += 3;
+  s.history.unshift({ type, hash: fakeHash(), blockNumber: s.height, timestamp: Date.now(), value: String(value), ok: true, newActiveBalance: null, retireStake: null, ...extra });
+  return s.history[0].hash;
+}
+function demoAnswer(path) {
+  const s = DEMO.s;
+  if (path.startsWith("tx/")) return { settled: true, ok: true, blockNumber: s.height };
+  if (path === "history") return { history: s.history.slice(0, 5) };
+  const secondsLeft = s.inactive > 0n ? Math.max(0, Math.ceil((s.unlockAt - Date.now()) / 1000)) : 0;
+  const isStaking = s.staked > 0n || s.inactive > 0n || s.retired > 0n;
+  return {
+    address: "demo", height: s.height, net: S.net, networkId: 24,
+    spendable: String(s.spendable), inAddress: String(s.spendable), heldByPay: "0",
+    staked: String(s.staked), inactive: String(s.inactive), retired: String(s.retired),
+    releaseAt: null, secondsLeft, isStaking,
+    leaving: s.retired > 0n ? "ready" : s.inactive > 0n ? (secondsLeft > 0 ? "waiting" : "releasable") : null,
+    delegation: isStaking ? s.pool?.address : null,
+    suggested: s.pool, current: isStaking ? s.pool : null,
+  };
+}
+const pause = (ms) => new Promise((ok) => setTimeout(ok, ms));
+const demoWallet = {
+  async sendNewStakerTransaction({ value }) { await pause(700); return demoWallet._stake(value, "create-staker"); },
+  async sendStakeTransaction({ value }) { await pause(700); return demoWallet._stake(value, "add-stake"); },
+  _stake(value, type) {
+    const s = DEMO.s, v = BigInt(value);
+    s.spendable -= v; s.staked += v;
+    return demoLog(type, v);
+  },
+  async sendSetActiveStakeTransaction({ newActiveBalance }) {
+    await pause(700);
+    const s = DEMO.s, target = BigInt(newActiveBalance);
+    if (target < s.staked) { s.inactive += s.staked - target; s.unlockAt = Date.now() + DEMO.wait; }
+    else { s.inactive -= target - s.staked; }
+    s.staked = target;
+    return demoLog("set-active-stake", 0n, { newActiveBalance: String(target) });
+  },
+  async sendRetireStakeTransaction({ retireStake }) {
+    await pause(700);
+    const s = DEMO.s, v = BigInt(retireStake);
+    s.inactive -= v; s.retired += v;
+    return demoLog("retire-stake", 0n, { retireStake: String(v) });
+  },
+  async sendRemoveStakeTransaction({ value }) {
+    await pause(700);
+    const s = DEMO.s, v = BigInt(value);
+    s.retired -= v; s.spendable += v;
+    return demoLog("remove-stake", v);
+  },
+};
+
+/** Switch to the demo wallet, keeping the real validator suggestion if we have one. */
+function startDemo() {
+  DEMO.on = true;
+  DEMO.s.pool = S.data?.suggested ?? S.data?.current
+    ?? { address: "NQ02 31N6 3KM5 T6G5 22TN EPF5 5XPY RLHK RMB3", name: "NimiqPocket", fee: 0.01, payoutType: "restake", stakers: 195, vetted: true, color: "#F39C12" };
+  S.provider = demoWallet;
+  S.view = "home"; S.amount = ""; S.msg = null; S.history = [];
+  document.documentElement.classList.add("demo");
+  refresh();
+  toTop();
+}
 
 const LUNA = 100000n;
 const MINIMUM = 10000000n;       // 100 NIM, from the chain's own policy
@@ -131,9 +209,11 @@ const MOOD = {
   serious: FACE.eyes + FACE.brows + FACE.flat,
   loading: FACE.eyes + FACE.smile,
 };
-function mascot(size, mood = "idle") {
+/* A gesture is an arm: "wave" (hello) or "thumb" (it worked). Arms sit
+   outside the hexagon's clip so a wave can reach past the edge. */
+function mascot(size, mood = "idle", gesture = "") {
   const u = "m" + ++mid;
-  return `<svg class="albie mood-${mood}" width="${size}" height="${size}" viewBox="-4 -4 108 108" aria-hidden="true">
+  return `<svg class="albie mood-${mood}${gesture ? " g-" + gesture : ""}" width="${size}" height="${size}" viewBox="-4 -4 108 108" aria-hidden="true">
   <defs>
     <radialGradient id="${u}bg" cx="70%" cy="85%" r="100%"><stop offset="0" stop-color="#2E3572"/><stop offset="1" stop-color="#1F2348"/></radialGradient>
     <radialGradient id="${u}head" cx="36%" cy="30%" r="75%"><stop offset="0" stop-color="#FFF7B8"/><stop offset=".45" stop-color="#FBDE45"/><stop offset="1" stop-color="#E8A912"/></radialGradient>
@@ -160,6 +240,10 @@ function mascot(size, mood = "idle") {
     <path d="M54 25.5c5-3.5 11-6.5 17-8" fill="none" stroke="#3E9B2E" stroke-width="1.6" stroke-linecap="round" opacity=".7"/>
     <path d="M51 28.5c-.3-2.5.2-4.5 1.5-6" fill="none" stroke="#6B4A1E" stroke-width="2" stroke-linecap="round"/>
   </g></g></g></g>
+  <g transform="${PLACE}">
+    <g class="m-wave"><path d="M70 92 L86 66" stroke="#F2C230" stroke-width="8" stroke-linecap="round"/><circle cx="87" cy="63" r="6" fill="#FBDE45" stroke="#C98E0B" stroke-width="1.2"/></g>
+    <g class="m-thumb"><path d="M70 95 L78 80" stroke="#F2C230" stroke-width="8" stroke-linecap="round"/><rect x="71" y="67" width="17" height="14" rx="5" fill="#FBDE45" stroke="#C98E0B" stroke-width="1.2"/><rect x="71.5" y="55.5" width="6" height="15" rx="3" fill="#FBDE45" stroke="#C98E0B" stroke-width="1.2" transform="rotate(-8 74.5 70)"/><path d="M80 71.5h6M80 75h6M80 78.5h5" stroke="#C98E0B" stroke-width="1.1" stroke-linecap="round"/></g>
+  </g>
   ${mood === "sleepy" ? `<g class="m-z" fill="#F4F4F8" font-family="Mulish,sans-serif" font-weight="900"><text x="74" y="32" font-size="15">z</text><text x="84" y="19" font-size="11">z</text></g>` : ""}
 </svg>`;
 }
@@ -201,7 +285,7 @@ async function refresh() {
   // on by itself the moment the wait is over.
   clearTimeout(waitTimer);
   if (S.data && wallet().leaving === "waiting") {
-    waitTimer = setTimeout(refresh, Math.min(60_000, S.data.secondsLeft * 1000 + 4000));
+    waitTimer = setTimeout(refresh, Math.min(60_000, S.data.secondsLeft * 1000 + (DEMO.on ? 300 : 4000)));
   }
 }
 
@@ -227,8 +311,9 @@ function mood() {
 
 function header() {
   const live = !!S.provider;
-  return `<header class="top">${mascot(52, mood())}<div class="name">NimJar</div>
-    <div class="mode ${live ? "live" : ""}"><i></i>${live ? "Live" : "Preview"}${S.net === "test" ? " · Testnet" : ""}</div></header>`;
+  const gesture = S.happyUntil > Date.now() ? "thumb" : "";
+  return `<header class="top"><button class="hello" type="button" data-act="wave" aria-label="Say hello">${mascot(52, mood(), gesture)}</button><div class="name">NimJar</div>
+    <div class="mode ${DEMO.on ? "demo" : live ? "live" : ""}"><i></i>${DEMO.on ? "Demo" : live ? "Live" : "Preview"}${!DEMO.on && S.net === "test" ? " · Testnet" : ""}</div></header>`;
 }
 
 function seg(label, luna, color) {
@@ -344,10 +429,11 @@ function activity() {
     let shown = amount != null && BigInt(amount) > 0n ? nim(amount) + " NIM" : "";
     // On chain but changed nothing. Shown as what it was, never as done.
     if (h.ok === false) { label = `${attempt}: didn't go through`; dot = "--red-soft"; icon = "x"; shown = ""; }
-    return `<a class="row" href="${explorer()}${esc(h.hash)}" target="_blank" rel="noopener">
-      <div class="dot" style="background:var(${dot})">${ic(icon)}</div>
+    const body = `<div class="dot" style="background:var(${dot})">${ic(icon)}</div>
       <div class="t"><b>${esc(label)}</b><span>${when(h.timestamp)}</span></div>
-      <div class="amt">${shown}<span>Proof ↗</span></div></a>`;
+      <div class="amt">${shown}<span>${DEMO.on ? "Demo" : "Proof ↗"}</span></div>`;
+    return DEMO.on ? `<div class="row">${body}</div>`
+      : `<a class="row" href="${explorer()}${esc(h.hash)}" target="_blank" rel="noopener">${body}</a>`;
   }).join("")}</div>`;
 }
 
@@ -389,8 +475,11 @@ function render() {
   const w = wallet();
   if (S.view === "form" && w.maxStake < MINIMUM) S.view = "home";
   const showForm = !w.isStaking || S.view === "form";
-  const preview = S.provider ? "" :
-    `<div class="msg">Preview: this is a real staked wallet on Nimiq ${S.net === "test" ? "testnet" : "mainnet"}. Open NimJar inside Nimiq Pay to stake your own NIM.</div>`;
+  const preview = DEMO.on
+    ? `<div class="msg demo-note"><b>Demo wallet.</b> Nothing here is real or sent. The real wait is up to a day; here it's 15 seconds. <button class="link" type="button" data-act="demo-exit">Leave the demo</button></div>`
+    : S.provider ? "" :
+    `<div class="msg">Preview: this is a real staked wallet on Nimiq ${S.net === "test" ? "testnet" : "mainnet"}. Open NimJar inside Nimiq Pay to stake your own NIM.
+      <button class="cta quiet try" type="button" data-act="demo">Try every step with a demo wallet</button></div>`;
 
   let body = "";
   if (showForm) {
@@ -417,7 +506,7 @@ function render() {
 }
 
 function dockFor(w, showForm) {
-  const hint = `<div class="small">${S.provider ? "Nimiq Pay will ask you to confirm" : "Preview only: open in Nimiq Pay to stake"}</div>`;
+  const hint = `<div class="small">${DEMO.on ? "Demo wallet: no Nimiq Pay needed, nothing is sent" : S.provider ? "Nimiq Pay will ask you to confirm" : "Preview only: open in Nimiq Pay to stake"}</div>`;
   const wrap = (x) => `<div>${x}</div>`;
   if (S.busy) return wrap(`<button class="cta" type="button" disabled>Waiting for Nimiq Pay…</button>`);
   if (showForm) return w.maxStake >= MINIMUM ? wrap(`<button class="cta" type="button" id="go" data-act="stake">Stake</button>` + hint) : "";
@@ -488,6 +577,14 @@ function closeSheet() {
   if (device) device.style.overflowY = "";
 }
 
+/** A little hello: the mascot waves for two seconds. Pure fun, no state. */
+function wave(svg) {
+  if (!svg || svg.classList.contains("g-wave")) return;
+  svg.classList.remove("g-thumb");
+  svg.classList.add("g-wave");
+  setTimeout(() => svg.classList.remove("g-wave"), 2200);
+}
+
 /* ---- actions ------------------------------------------------------------- */
 function previewOnly() {
   S.msg = { kind: "info", text: "This is a preview of a real wallet. Open NimJar inside Nimiq Pay to move your own NIM." };
@@ -522,7 +619,7 @@ async function run(send, sentText, doneText) {
     if (landed && !landed.ok) {
       S.msg = { kind: "bad", text: `It reached the network in block ${landed.block.toLocaleString("en-GB")} but didn't go through, so nothing moved. Your NIM is where it was.` };
     } else if (landed) {
-      S.msg = { kind: "good", text: `${doneText} Confirmed in block ${landed.block.toLocaleString("en-GB")}.` };
+      S.msg = { kind: "good", text: DEMO.on ? `${doneText} (Demo: nothing was sent.)` : `${doneText} Confirmed in block ${landed.block.toLocaleString("en-GB")}.` };
       S.happyUntil = Date.now() + 4000;
       S.view = "home"; S.agree = false;
     } else {
@@ -540,7 +637,7 @@ async function run(send, sentText, doneText) {
 /** Broadcast is not settlement: ask the chain whether the hash really landed. */
 async function settle(hash) {
   for (let i = 0; i < 45; i++) {
-    const r = await fetch(`/api/tx/${encodeURIComponent(hash)}?net=${S.net}`).then((x) => x.json()).catch(() => null);
+    const r = await api(`tx/${encodeURIComponent(hash)}`).then((x) => x.json()).catch(() => null);
     if (r?.settled) return { block: r.blockNumber, ok: r.ok !== false };
     await new Promise((ok) => setTimeout(ok, 2000));
   }
@@ -554,6 +651,9 @@ document.addEventListener("click", (e) => {
   const w = S.data ? wallet() : null;
 
   if (act === "retry") { S.error = null; render(); refresh(); }
+  if (act === "wave") wave(el.querySelector(".albie"));
+  if (act === "demo") startDemo();
+  if (act === "demo-exit") location.reload();
   if (act === "qa") {
     S.qa = Number(el.dataset.i);
     const sec = el.closest(".sec");
@@ -643,7 +743,8 @@ function when(ts) {
 /** A wait in words people use, not a block number. */
 function countdown(seconds) {
   if (seconds <= 0) return "almost done";
-  if (seconds < 3600) return "about " + Math.max(1, Math.round(seconds / 60)) + " minutes left";
+  if (seconds < 90) return "about " + seconds + " seconds left";
+  if (seconds < 3600) return "about " + Math.round(seconds / 60) + " minutes left";
   return "about " + (seconds / 3600).toFixed(1) + " hours left";
 }
 
@@ -675,14 +776,42 @@ async function whichNetwork() {
   }
 }
 
+/* The mascot on the laptop page: waves hello, and gives a thumbs up with a
+   line of advice when you tap it. Purely for fun; it touches no state. */
+const BUDDY_LINES = [
+  "Hi! I look after your NIM.",
+  "Tap “Try the demo” to see every step.",
+  "Your NIM is built to earn. Let it work!",
+  "I never hold your NIM. Only your wallet can move it.",
+  "Getting it back takes three taps. I'll walk you through.",
+];
+function buddy() {
+  const btn = $("buddy"), art = $("buddyArt"), says = $("buddySays");
+  if (!btn || getComputedStyle(btn).display === "none") return;
+  let line = -1;
+  const draw = (gesture) => { art.innerHTML = mascot(150, gesture === "thumb" ? "happy" : "idle", gesture); };
+  draw("");
+  setTimeout(() => wave(art.querySelector(".albie")), 900);
+  btn.addEventListener("mouseenter", () => wave(art.querySelector(".albie")));
+  btn.addEventListener("click", () => {
+    line = (line + 1) % BUDDY_LINES.length;
+    says.textContent = BUDDY_LINES[line];
+    draw("thumb");
+    clearTimeout(buddy.t);
+    buddy.t = setTimeout(() => draw(""), 2400);
+  });
+}
+
 /* ---- boot ---------------------------------------------------------------- */
 async function boot() {
   render();
+  buddy();
   try {
     S.provider = await init({ timeout: 2500 });
     const accounts = await S.provider.listAccounts();
     if (Array.isArray(accounts) && accounts.length) S.address = accounts[0];
     S.net = await whichNetwork();
+    document.documentElement.classList.add("in-pay");
   } catch {
     S.provider = null;   // not inside Nimiq Pay: show the real staked wallet instead
   }
