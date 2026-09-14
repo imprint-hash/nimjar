@@ -19,6 +19,7 @@ import http from "node:http";
 import fs from "node:fs";
 import { fileURLToPath } from "node:url";
 import crypto from "node:crypto";
+import * as Nimiq from "@nimiq/core";
 import { Chain, nim } from "./chain.js";
 import { renderApp } from "./page.js";
 
@@ -287,12 +288,21 @@ const server = http.createServer(async (req, res) => {
     // Broadcast is not settlement, so the page asks here whether a hash has
     // actually landed rather than believing the wallet's reply.
     if (req.method === "GET" && url.pathname.startsWith("/api/tx/")) {
-      const hash = decodeURIComponent(url.pathname.slice("/api/tx/".length));
+      // Nimiq Pay's typings describe the send calls as returning "the
+      // serialized transaction"; a hash is also plausible. Accept either: a
+      // confirmation check that silently never matches is its own lie.
+      let hash = decodeURIComponent(url.pathname.slice("/api/tx/".length)).trim().replace(/^0x/i, "");
+      if (/^[0-9a-f]{65,4000}$/i.test(hash)) {
+        try { hash = Nimiq.Transaction.fromAny(hash).hash(); }
+        catch { return json(res, 400, { error: "that is not a transaction" }); }
+      }
       if (!/^[0-9a-f]{64}$/i.test(hash)) return json(res, 400, { error: "that is not a transaction hash" });
       const found = await chain.lookup(hash);
+      console.log(`[tx] ${hash.slice(0, 12)}… ${found ? `in block ${found.blockNumber}${found.executionResult === false ? " (FAILED)" : ""}` : "not seen yet"}`);
       return json(res, 200, {
         hash,
         settled: Boolean(found),
+        ok: found ? found.executionResult !== false : null,
         blockNumber: found?.blockNumber ?? null,
       });
     }

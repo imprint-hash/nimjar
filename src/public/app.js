@@ -24,11 +24,11 @@ const YEARLY = 0.15;             // ~15%. Shown per week in NIM, never as a perc
    stake but never leave. 5 NIM covers those fees many thousands of times. */
 const KEEP = 5n * LUNA;
 
-/* Fees in luna, sent with every wallet call. Sized from the measured
-   transactions (create 286 bytes, add 187, unstake 273, confirm 273, withdraw
-   167, at one luna per byte). Nimiq Pay may choose its own — in testing it
-   used zero and everything still landed — so these are a floor, not a promise. */
-const FEE = { create: 300, add: 200, unstake: 300, retire: 300, withdraw: 200 };
+/* Fees in luna, suggested with each wallet call, sized from the measured
+   transactions at one luna per byte. Nimiq Pay picks its own fee (zero, in
+   every test so far), so these are a suggestion, not a promise. The withdrawal
+   is the exception and always goes at zero: see "withdraw" below. */
+const FEE = { create: 300, add: 200, unstake: 300, retire: 300 };
 
 /* Amounts smaller than this are treated as nothing. If a wallet ever leaves a
    few luna behind in the staking contract, the app must not get stuck asking
@@ -302,26 +302,31 @@ function track(w) {
     [`Confirm withdrawal<em class="tag">Permanent</em>`, at === 2 ? "Waiting for you" : at > 2 ? "Done" : "Can't be undone"],
     ["Withdraw", at === 3 ? "Ready. Back to your wallet" : "Back to your wallet"],
   ];
+  const again = at < 3
+    ? `<button class="cta quiet" type="button" data-act="restake">Changed your mind? Stake ${nim(w.inactive)} NIM again</button>`
+    : `<p class="hint">Confirmed withdrawals can't go back to staking. Once it's in your wallet you can stake it again.</p>`;
   return `<div class="sec"><h2>Getting your NIM back</h2><ol class="track">${steps.map(([b, s], i) =>
-    `<li class="${i < at ? "done" : i === at ? "now" : "later"}"><div class="n">${i < at ? ic("check") : i + 1}</div><div><b>${b}</b><span>${s}</span></div></li>`).join("")}</ol></div>`;
+    `<li class="${i < at ? "done" : i === at ? "now" : "later"}"><div class="n">${i < at ? ic("check") : i + 1}</div><div><b>${b}</b><span>${s}</span></div></li>`).join("")}</ol>${again}</div>`;
 }
 
 const ACTION = {
-  "create-staker": ["Staked", "--green-soft", "in"],
-  "add-stake": ["Added stake", "--green-soft", "in"],
-  "set-active-stake": ["Unstake requested", "--blue-soft", "clock"],
-  "retire-stake": ["Withdrawal confirmed", "--red-soft", "check"],
-  "remove-stake": ["Withdrawn", "--gold-soft", "out"],
-  "update-staker": ["Validator changed", "--blue-soft", "swap"],
+  "create-staker": ["Staked", "--green-soft", "in", "Stake"],
+  "add-stake": ["Added stake", "--green-soft", "in", "Add stake"],
+  "set-active-stake": ["Stake changed", "--blue-soft", "clock", "Change stake"],
+  "retire-stake": ["Withdrawal confirmed", "--red-soft", "check", "Confirm withdrawal"],
+  "remove-stake": ["Withdrawn", "--gold-soft", "out", "Withdraw"],
+  "update-staker": ["Validator changed", "--blue-soft", "swap", "Change validator"],
 };
 function activity() {
   if (!S.history.length) return `<div id="activity"></div>`;
   return `<div class="sec" id="activity"><h2>Activity</h2>${S.history.map((h) => {
-    let [label, dot, icon] = ACTION[h.type] || [h.type, "--blue-soft", "clock"];
+    let [label, dot, icon, attempt] = ACTION[h.type] || [h.type, "--blue-soft", "clock", h.type];
+    // Setting the active stake to zero is an unstake; to more, a restake.
+    if (h.type === "set-active-stake") label = h.newActiveBalance != null && BigInt(h.newActiveBalance) > 0n ? "Staked again" : "Unstake requested";
     const amount = h.type === "retire-stake" ? h.retireStake : h.type === "set-active-stake" ? null : h.value;
     let shown = amount != null && BigInt(amount) > 0n ? nim(amount) + " NIM" : "";
     // On chain but changed nothing. Shown as what it was, never as done.
-    if (h.ok === false) { label += " · didn't go through"; dot = "--red-soft"; icon = "x"; shown = ""; }
+    if (h.ok === false) { label = `${attempt}: didn't go through`; dot = "--red-soft"; icon = "x"; shown = ""; }
     return `<a class="row" href="${EXPLORER}${esc(h.hash)}" target="_blank" rel="noopener">
       <div class="dot" style="background:var(${dot})">${ic(icon)}</div>
       <div class="t"><b>${esc(label)}</b><span>${when(h.timestamp)}</span></div>
@@ -400,8 +405,7 @@ function dockFor(w, showForm) {
   if (w.leaving === "waiting") return wrap(`<div class="calm">Unlocking · ${countdown(S.data.secondsLeft)}</div><div class="small">You can close the app. It keeps going.</div>`);
   if (w.leaving === "releasable") return wrap(`<button class="cta red" type="button" id="retire" data-act="retire" ${S.agree ? "" : "disabled"}>Confirm withdrawal of ${nim(w.inactive)} NIM</button>` + hint);
   if (w.leaving === "ready") {
-    const get = w.retired - BigInt(FEE.withdraw);
-    return wrap(`<button class="cta" type="button" data-act="withdraw">Withdraw ${nim(get)} NIM to your wallet</button>` + hint);
+    return wrap(`<button class="cta" type="button" data-act="withdraw">Withdraw ${nim(w.retired)} NIM to your wallet</button>` + hint);
   }
   return "";
 }
@@ -479,9 +483,11 @@ async function run(send, sentText, doneText) {
     const hash = typeof result === "string" ? result : result?.hash ?? String(result);
     S.msg = { kind: "info", text: sentText + " Waiting for the network to confirm it…" };
     S.busy = false; render();
-    const block = await settle(hash);
-    if (block) {
-      S.msg = { kind: "good", text: `${doneText} Confirmed in block ${block.toLocaleString("en-GB")}.` };
+    const landed = await settle(hash);
+    if (landed && !landed.ok) {
+      S.msg = { kind: "bad", text: `It reached the network in block ${landed.block.toLocaleString("en-GB")} but didn't go through, so nothing moved. Your NIM is where it was.` };
+    } else if (landed) {
+      S.msg = { kind: "good", text: `${doneText} Confirmed in block ${landed.block.toLocaleString("en-GB")}.` };
       S.happyUntil = Date.now() + 4000;
       S.view = "home"; S.agree = false;
     } else {
@@ -500,7 +506,7 @@ async function run(send, sentText, doneText) {
 async function settle(hash) {
   for (let i = 0; i < 45; i++) {
     const r = await fetch("/api/tx/" + encodeURIComponent(hash)).then((x) => x.json()).catch(() => null);
-    if (r?.settled) return r.blockNumber;
+    if (r?.settled) return { block: r.blockNumber, ok: r.ok !== false };
     await new Promise((ok) => setTimeout(ok, 2000));
   }
   return null;
@@ -551,14 +557,25 @@ document.addEventListener("click", (e) => {
       "Sent.", "Withdrawal confirmed. One tap left: withdraw it to your wallet.");
   }
 
-  // Step three. The staking contract is the sender, so the fee comes out of the
-  // stake itself. Asking for all of it plus a fee is accepted by the node and
-  // then never lands (found on mainnet, 10 Sep). Leave room for the fee.
+  // Step three: everything retired, in one go, at zero fee.
+  //
+  // Two network rules meet here. The staking contract is the sender, so value
+  // and fee both come out of the retired balance, and asking for more than it
+  // holds is accepted by the node and never lands (mainnet, 10 Sep). And no
+  // withdrawal may leave between 0 and 100 NIM behind (staker.rs, invariant 2).
+  // Nimiq Pay pays zero fees whatever we suggest, so "retired minus a fee"
+  // left 0.002 NIM behind and vanished (testnet, 14 Sep). value + fee must be
+  // exactly the retired balance, so: all of it, fee 0.
   if (act === "withdraw") {
-    const value = w.retired - BigInt(FEE.withdraw);
-    if (value <= 0n) { S.msg = { kind: "bad", text: "This is too small to cover the network fee." }; return render(); }
-    run(() => S.provider.sendRemoveStakeTransaction({ value: Number(value), fee: FEE.withdraw }),
-      "Sent.", `Done. ${nim(value)} NIM is back in your wallet.`);
+    run(() => S.provider.sendRemoveStakeTransaction({ value: Number(w.retired), fee: 0 }),
+      "Sent.", `Done. ${nim(w.retired)} NIM is back in your wallet.`);
+  }
+
+  // Changed your mind while it unlocks: put the unstaking NIM back to work.
+  // Possible right up until the permanent step, never after.
+  if (act === "restake") {
+    run(() => S.provider.sendSetActiveStakeTransaction({ newActiveBalance: Number(w.staked + w.inactive), fee: FEE.unstake }),
+      "Sent.", `Done. ${nim(w.staked + w.inactive)} NIM is earning again.`);
   }
 });
 
